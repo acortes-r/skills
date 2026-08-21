@@ -1,0 +1,14 @@
+interface:
+  display_name: "Review Changes"
+  short_description: "Non-blocking code review that loads the project's own rules and never approves"
+  default_prompt: "Use review-changes on the current diff. Publish findings as non-blocking suggestions."
+
+policy:
+  allow_implicit_invocation: true
+  read_only_repository: true
+  write_scopes:
+    - github_pull_request_review_comment
+  forbidden_actions:
+    - pull_request_approve
+    - pull_request_request_changes
+    - pull_request_merge

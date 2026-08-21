@@ -1,0 +1,15 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+*.swp
+
+# Scratch and run output
+tmp/
+*.log
+
+# Working files that can hold real PR content
+findings.json
+findings.*.json

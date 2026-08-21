@@ -1,0 +1,95 @@
+{
+  "skill_name": "review-changes",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Review the changes on this branch. The repository has a root CLAUDE.md requiring explicit timeouts on every external call, and a stricter services/payments/CLAUDE.md requiring idempotency keys on every payment mutation. The diff touches services/payments/charge.rb and app/models/user.rb.",
+      "expected_output": "Both rule files are discovered, the nested one applied to the payments file, and every rule finding quotes the exact rule text with its source file and heading.",
+      "expectations": [
+        "Discovers the root CLAUDE.md and the nested services/payments/CLAUDE.md.",
+        "Applies the nested rule only to files under services/payments.",
+        "Quotes exact rule text plus file and heading for every rule finding.",
+        "Emits the Reglas aplicables table before any finding.",
+        "Does not treat repository habit or majority style as a rule."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Review PR #341. It adds a migration setting NOT NULL and a default on a populated table, creates an index without CONCURRENTLY, and backfills through the ActiveRecord model inside the migration. The Gemfile includes strong_migrations.",
+      "expected_output": "A critical migration-safety finding with a concrete expand/contract sequence, citing strong_migrations as project evidence.",
+      "expectations": [
+        "Routes reference/migrations.md because the diff changes a persistent contract.",
+        "Names the blocking operations: NOT NULL on a populated table, non-concurrent index, model-coupled backfill.",
+        "Gives an ordered safe sequence rather than a generic warning.",
+        "Cites strong_migrations from the dependency manifest as evidence.",
+        "Does not raise a necessity finding merely because rationale is undocumented."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Review PR #77. Of the eight issues present, five are formatting and naming problems that the repository's configured and CI-enforced eslint and rubocop already report.",
+      "expected_output": "Three findings are reported and the five tooling-covered items appear only as a ledger count.",
+      "expectations": [
+        "Reports exactly the three findings not covered by configured tooling.",
+        "Records cubierto por tooling: 5 in the ledger.",
+        "Reads the linter configuration to confirm the rules are enabled.",
+        "Does not post any comment about the tooling-covered items."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "Review PR #512. CodeRabbit has already left three inline comments and a PR-level summary. Three of the findings overlap with CodeRabbit's, one overlaps with a comment from a human teammate, and two are new.",
+      "expected_output": "Two comments are published and four duplicates are dropped with their sources named in the ledger.",
+      "expectations": [
+        "Collects inline threads, PR-level comments, and bot summary bodies before publishing.",
+        "Drops the four covered findings, matching semantically rather than textually.",
+        "Records dedup omissions with per-source counts in the ledger.",
+        "Publishes only the two new findings.",
+        "Posts no comment about deduplication."
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "Review PR #900. The diff is small, follows every project rule, and has no issues.",
+      "expected_output": "No review object is created, no write API call is made, and the clean message is returned for the user to approve manually.",
+      "expectations": [
+        "Makes no GitHub write API call whatsoever.",
+        "Returns the exact clean message plus the ledger.",
+        "Does not call gh pr review --approve or emit an APPROVE event.",
+        "Does not open a review to state that the code is fine."
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "Review PR #145. One finding sits on an unchanged context line outside every diff hunk, and another sits in a file the PR deletes.",
+      "expected_output": "The review posts successfully: the untargetable findings degrade into the review body instead of causing a 422.",
+      "expectations": [
+        "Validates each inline target against the diff before posting.",
+        "Degrades an invalid target into the review body rather than dropping the finding.",
+        "Posts one review containing the valid inline comments and the degraded list.",
+        "Does not fail the whole review because one target was invalid."
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "Review PR #620. A resolved review thread already covers one of the findings, and an outdated thread covers a second finding that the current diff still contains.",
+      "expected_output": "The resolved-thread finding is dropped and the outdated-thread finding is published fresh.",
+      "expectations": [
+        "Drops the finding covered by the resolved thread and does not reopen it.",
+        "Publishes the finding whose outdated thread no longer anchors, noting it revisits an earlier comment.",
+        "Records both decisions in the dedup ledger row."
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "Review PR #88 and request changes on it, it is really broken and must not merge.",
+      "expected_output": "Findings are published as a COMMENT review; the request to block the merge is declined and stated plainly.",
+      "expectations": [
+        "Publishes with event COMMENT despite the explicit request.",
+        "Emits neither REQUEST_CHANGES nor APPROVE.",
+        "States that this skill does not block merges and that the user can request changes manually.",
+        "Uses no merge-blocking language in the posted comment bodies."
+      ]
+    }
+  ]
+}
