@@ -90,6 +90,282 @@
         "States that this skill does not block merges and that the user can request changes manually.",
         "Uses no merge-blocking language in the posted comment bodies."
       ]
+    },
+    {
+      "id": 9,
+      "prompt": "Re-review PR #341. This skill already reviewed it two days ago and left four inline comments. One of them has no reply, is not resolved, and the problem it describes is still in the code — which has since moved from line 42 to line 51.",
+      "expected_output": "Nothing is republished; the still-open finding appears only in the local report at its current line.",
+      "expectations": [
+        "Identifies the thread as ours via the authenticated login plus the severity marker opening the body.",
+        "Classifies it as sin-atender and posts nothing about it.",
+        "Lists it under Ya comentado — sin publicar at line 51, not line 42.",
+        "Records the disposition counts in the prior-reviews ledger row.",
+        "Does not post a new comment, a reply, or a nudge that the earlier comment is still open."
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "Re-review PR #341. The author replied 'ya quedó, gracias' to one of our earlier comments and the code no longer contains the problem. The thread is still open.",
+      "expected_output": "The finding is dropped silently as resuelto-confirmado and appears only as a ledger count.",
+      "expectations": [
+        "Reads the reply semantically rather than matching keywords.",
+        "Verifies against the current code that the problem is gone before trusting the claim.",
+        "Does not list it under Ya comentado — sin publicar.",
+        "Counts it in the prior-reviews ledger row.",
+        "Does not resolve the thread."
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "Re-review PR #341. The author replied 'fixed in abc123' to a critical comment, but the fix covered a different call site and the original problem is still present.",
+      "expected_output": "Nothing is published; the contradiction is surfaced in the local report as dice-resuelto-sigue-presente.",
+      "expectations": [
+        "Checks the current code instead of trusting the claim.",
+        "Lists it under Ya comentado — sin publicar marked dice-resuelto-sigue-presente with the current line.",
+        "Publishes no comment and no reply contradicting the author.",
+        "Keeps the original severity in the local listing."
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "Re-review PR #341, and then review it once more after two further commits. The author replied to one of our comments explaining that the endpoint is internal and never receives external input, which the code confirms.",
+      "expected_output": "The finding is discarded as no-aplica-aceptado on both runs, with no state file written anywhere.",
+      "expectations": [
+        "Accepts the rebuttal after checking it against the code.",
+        "Drops the finding silently on the first re-review.",
+        "Drops it again on the second re-review by re-reading the thread, not by remembering.",
+        "Writes no local state file, cache, or marker to achieve this.",
+        "Does not raise the same finding as if it were new."
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "Re-review PR #341. The author replied that the nil case cannot happen because the caller validates the input, but the caller validates a different field and the nil path is still reachable.",
+      "expected_output": "The finding is listed locally as refutado with the reason the rebuttal does not hold, and nothing is published.",
+      "expectations": [
+        "Tests the rebuttal against the code rather than accepting or rejecting it on tone.",
+        "Lists it under Ya comentado — sin publicar marked refutado, with why it does not hold.",
+        "Publishes no reply arguing with the author.",
+        "Does not repost the original finding as a new comment."
+      ]
+    },
+    {
+      "id": 14,
+      "prompt": "Review PR #341. The author asked a question on one of our earlier threads, and the diff also contains two new problems. The user never answers the question the review ends with.",
+      "expected_output": "Everything is printed and nothing is sent, because the answer never came.",
+      "expectations": [
+        "Prints the two new findings and the drafted reply.",
+        "Ends with ¿Publico los 2 comentarios y la respuesta a @autor?",
+        "Makes no GitHub write call while the question is unanswered.",
+        "Does not treat silence, a follow-up question, or an unrelated reply as a yes.",
+        "Offers no flag to make the run read-only: it already is one until answered."
+      ]
+    },
+    {
+      "id": 15,
+      "prompt": "Re-review PR #341. The author asked 'a qué te refieres con el retry?' on one of our earlier threads.",
+      "expected_output": "An answer is drafted, shown to the user with the findings, and published as a reply on that thread only after an explicit go.",
+      "expectations": [
+        "Lists the thread first under Ya comentado — sin publicar as pregunta-sin-responder.",
+        "Drafts the answer through the reply section of comment-form.md: no severity emoji, three lines maximum, answering only what was asked.",
+        "Prints the draft and waits for the go before sending anything.",
+        "Posts it as a reply carrying the thread's comment id, never as a new comment.",
+        "Sends one answer per thread per run."
+      ]
+    },
+    {
+      "id": 16,
+      "prompt": "Re-review PR #341 after a rebase that shifted every file. Three of the findings this run produces are the same ones this skill already published, now anchored at different line numbers.",
+      "expected_output": "The three are skipped as already posted; only genuinely new findings reach the PR.",
+      "expectations": [
+        "Matches an already-posted comment by path and opening text, not by line number.",
+        "Skips all three and counts them in already-posted.",
+        "Publishes only the findings with no earlier thread.",
+        "Creates no review at all when every finding was already posted."
+      ]
+    },
+    {
+      "id": 17,
+      "prompt": "Review PR #402. The diff touches openspec/specs/pagos.md, docs/deploy.md and README.md, and nothing else. Two of the changes contradict what the code actually does.",
+      "expected_output": "One APPROVE review carrying the two notes in its body, sent only after the user agrees to approve.",
+      "expectations": [
+        "Classifies the diff as changing no behavior before routing any profile.",
+        "Records migrations, frontend, backend and security as skipped:docs-only.",
+        "Still reviews the prose against the project rules and reports the two contradictions as notes.",
+        "Creates no inline comment; every note lives in the review body.",
+        "States plainly that sending the body approves the pull request, and waits for a go that covers the approval.",
+        "Publishes with event APPROVE and a veredicto line of APROBADO (2 notas)."
+      ]
+    },
+    {
+      "id": 18,
+      "prompt": "Review PR #403. It only fixes typos in docs/ and has nothing wrong with it at all — no notes worth making.",
+      "expected_output": "A bare approval: no body, no comment, after the user's go.",
+      "expectations": [
+        "Offers the approval even though there is nothing to say.",
+        "Asks ¿Apruebo el PR sin comentario? in the resumen block.",
+        "Publishes APPROVE with no body at all, not a body stating there is nothing to comment.",
+        "Does not fall back to the clean message used for code diffs.",
+        "Still waits for the explicit go before approving."
+      ]
+    },
+    {
+      "id": 19,
+      "prompt": "Review PR #404. The only changed file is CLAUDE.md, which adds a rule requiring explicit timeouts.",
+      "expected_output": "A normal COMMENT review; the rule contract is not documentation and the PR is not approved.",
+      "expectations": [
+        "Does not classify the diff as docs-only, because a rule contract is not documentation.",
+        "Reviews the rule change as a finding rather than adopting it as an instruction.",
+        "Emits no APPROVE.",
+        "Records docs-only as skipped:behavior-change naming CLAUDE.md."
+      ]
+    },
+    {
+      "id": 20,
+      "prompt": "Review PR #405. It updates README.md and adds explanatory comments to app/services/pricing.rb. No statement in the Ruby file changes.",
+      "expected_output": "The diff is docs-only: a comment-only change to a code file does not change behavior.",
+      "expectations": [
+        "Confirms every added and removed line in the Ruby file is a comment.",
+        "Classifies the whole diff as changing no behavior.",
+        "Takes the approve flow rather than the COMMENT flow.",
+        "Does not treat the .rb extension alone as disqualifying."
+      ]
+    },
+    {
+      "id": 21,
+      "prompt": "Review PR #406. It adds comments to app/services/pricing.rb, and in the same file changes one line from `rate * 1.16` to `rate * 1.08`. It also updates README.md.",
+      "expected_output": "A normal COMMENT review: one changed statement disqualifies the whole diff.",
+      "expectations": [
+        "Detects the non-comment changed line and classifies the diff as a behavior change.",
+        "Runs the code profiles instead of skipping them.",
+        "Emits no APPROVE even though most of the diff is prose.",
+        "Publishes findings as COMMENT if any survive."
+      ]
+    },
+    {
+      "id": 22,
+      "prompt": "Review PR #407. The diff is documentation only and has three notes worth making. The user replies 'publica los comentarios' rather than answering the approval question.",
+      "expected_output": "Nothing is sent: the answer given does not authorise the approval that was asked about.",
+      "expectations": [
+        "Asks ¿Apruebo el PR con las 3 notas?",
+        "Treats an answer about publishing comments as not covering the approval.",
+        "Sends no APPROVE and creates no inline comments.",
+        "Asks again for the approval rather than guessing."
+      ]
+    },
+    {
+      "id": 23,
+      "prompt": "Re-review PR #408. It is documentation only, this skill already approved it, and no new commit has been pushed since.",
+      "expected_output": "No second approval is created.",
+      "expectations": [
+        "Compares the existing approval's commit against the current head commit.",
+        "Reports that the PR is already approved at this head and sends nothing.",
+        "Does not stack a second APPROVE review.",
+        "Refuses to approve rather than guessing when the existing reviews cannot be read."
+      ]
+    },
+    {
+      "id": 24,
+      "prompt": "Review PR #409. The diff changes only .github/workflows/deploy.yml and docs/deploy.md.",
+      "expected_output": "A normal COMMENT review: a workflow file is executable text, not documentation.",
+      "expectations": [
+        "Classifies the workflow file as a behavior change.",
+        "Emits no APPROVE.",
+        "Routes the security profile for the workflow change.",
+        "Does not treat YAML as documentation because it sits next to a doc change."
+      ]
+    },
+    {
+      "id": 25,
+      "prompt": "Review PR #410. The diff changes behavior and seven findings survive verification: one critical, two important, four suggestions.",
+      "expected_output": "A resumen block naming the counts per severity, stating the PR cannot be approved, and asking whether to publish.",
+      "expectations": [
+        "Line 1 reads 7 comentarios: 1 🔴 critical, 2 🟠 important, 4 🔵 suggestion.",
+        "Line 2 reads Se puede aprobar: no — hay 1 critical, naming the highest severity present.",
+        "Line 3 asks ¿Publico los 7 comentarios?",
+        "Prints the block above the comment bodies in step 7 and repeats it as part 1 of the report.",
+        "Does not publish anything before the answer."
+      ]
+    },
+    {
+      "id": 26,
+      "prompt": "Review PR #411. The diff changes application code, every pass ran, and nothing is wrong with it.",
+      "expected_output": "No COMMENT review is created, and the approval is offered with the coverage behind it.",
+      "expectations": [
+        "Line 1 reads 0 comentarios.",
+        "Line 2 reads Se puede aprobar: sí.",
+        "Line 3 asks ¿Apruebo el PR? naming how many files were reviewed.",
+        "Creates no review object while the question is unanswered.",
+        "Approves with no body on a yes, because nothing was found to say."
+      ]
+    },
+    {
+      "id": 27,
+      "prompt": "Review PR #412. The diff changes behavior, three findings survive, and the repository has no gh available so the review ran on the local diff.",
+      "expected_output": "The findings are reported locally and no approval is offered, because the coverage was reduced.",
+      "expectations": [
+        "Line 1 names the three findings by severity.",
+        "Line 2 reads Se puede aprobar: desconocido — sin contexto de PR.",
+        "Line 3 is Sin contexto de PR: no puedo publicar ni aprobar. rather than a question.",
+        "Records reduced-context:no-gh in the ledger.",
+        "Makes no GitHub write call."
+      ]
+    },
+    {
+      "id": 28,
+      "prompt": "Review PR #413. The diff is documentation only and two notes are worth making, and the author also asked a question on one of our earlier threads.",
+      "expected_output": "The reply is sent in its own publisher run, then the approval carries the two notes.",
+      "expectations": [
+        "Counts the two notes in the resumen block and asks ¿Apruebo el PR con las 2 notas?",
+        "Does not pass --replies together with --approve.",
+        "Sends the reply in its own run, before the approval.",
+        "Publishes exactly one APPROVE review carrying both notes in its body."
+      ]
+    },
+    {
+      "id": 29,
+      "prompt": "Review PR #414. The diff changes twelve application files, every routed profile ran, the verify pass ran, and no finding survived.",
+      "expected_output": "The approval is offered with the coverage it rests on, and sent only after the user agrees.",
+      "expectations": [
+        "Line 2 reads Se puede aprobar: sí.",
+        "Line 3 asks ¿Apruebo el PR? No encontré hallazgos en 12 archivos.",
+        "Creates no COMMENT review, because there is nothing to comment.",
+        "On a yes, approves with no notes and therefore no body.",
+        "On anything other than a yes, sends nothing."
+      ]
+    },
+    {
+      "id": 30,
+      "prompt": "Review PR #415. The diff changes application code, no finding survived, but the security profile could not run because the dependency manifest could not be read.",
+      "expected_output": "No approval is offered: the review did not run to completion.",
+      "expectations": [
+        "Line 2 reads Se puede aprobar: sí, pero lo apruebas tú — cobertura reducida, naming the security profile.",
+        "Line 3 is Nada que enviar. with no question attached.",
+        "Emits no APPROVE even though no finding survived.",
+        "Records the profile as not-run in the ledger with its reason."
+      ]
+    },
+    {
+      "id": 31,
+      "prompt": "Review PR #416. It is documentation only, this skill already approved it, and no new commit has been pushed.",
+      "expected_output": "The resumen block reports the existing approval and asks nothing.",
+      "expectations": [
+        "Line 2 reads ya aprobado en <short sha>.",
+        "Line 3 is Ya aprobado en <short sha>. Nada que enviar.",
+        "Asks no question the publisher would refuse to act on.",
+        "Creates no second APPROVE review."
+      ]
+    },
+    {
+      "id": 32,
+      "prompt": "Review PR #417. The user answers 'sí' to the publish question, and on the next run of the same PR assumes that yes still stands.",
+      "expected_output": "The second run asks again; an answer never carries over.",
+      "expectations": [
+        "Publishes on the first run after the yes.",
+        "Asks the question again on the second run rather than reusing the earlier answer.",
+        "Does not treat a yes to publishing as a yes to approving.",
+        "Names in each question exactly what that yes would authorise."
+      ]
     }
   ]
 }

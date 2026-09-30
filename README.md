@@ -16,7 +16,7 @@ Replace `<your-github-user>` with the account this repository lives under.
 
 | Skill | What it does |
 |---|---|
-| [review-changes](skills/review-changes/) | Non-blocking code review: loads the project's own rules, verifies findings adversarially, dedupes against other reviewers, publishes GitHub suggestions, never approves |
+| [review-changes](skills/review-changes/) | Non-blocking code review: loads the project's own rules, verifies findings adversarially, dedupes against its own earlier comments and other reviewers, publishes GitHub suggestions, approves only diffs that change no behavior |
 
 ## Layout
 
