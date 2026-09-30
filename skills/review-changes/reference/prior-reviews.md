@@ -101,16 +101,17 @@ finding was resolved.
 ## Answer a question
 
 A `pregunta-sin-responder` is the only disposition that can produce new posted
-text. Conditions, all required:
+text. Conditions, both required:
 
-- The run is not a dry run.
-- The answer was printed to the user with the findings and included in the go.
+- The answer was printed to the user with the findings, and the resumen block's
+  question named the reply among what a yes authorizes.
 - The text follows the reply section of `comment-form.md`.
 
 The answer goes as a reply on that thread, carrying its comment id, never as a
 new comment. One answer per thread per run.
 
-Dry run: print the draft, send nothing, and say it was not sent.
+On a docs-only diff the reply is sent in its own publisher run, before the
+approval: `--approve` refuses `--replies`.
 
 ## Ledger
 

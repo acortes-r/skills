@@ -107,10 +107,8 @@ No notes at all means no body. The approval goes in bare and the question is
 gets an approval and silence, not a comment announcing that there is nothing to
 comment.
 
-Dry run: print the body, state that the approval was not sent, and stop.
-
-Already approved by us at this same head commit: do not approve again. Say so
-and stop.
+Already approved by us at this same head commit: do not approve again. The
+resumen block says `ya aprobado en <short sha>` and asks nothing.
 
 ## Ledger
 

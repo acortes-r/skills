@@ -4,8 +4,8 @@ Non-blocking code review. Loads the project's own documented rules first,
 verifies every finding adversarially, drops what this skill and other reviewers
 already said, and publishes the rest as GitHub suggestions.
 
-**It never requests changes.** It approves exactly one thing: a diff that
-changes no behavior, and only after you say to send it.
+**It never requests changes.** It can approve, and it never does so on its own:
+every run ends with a question, and nothing reaches GitHub until you answer it.
 
 ## Install
 
@@ -18,7 +18,6 @@ npx skills add <your-github-user>/skills --skill review-changes
 ```text
 Use review-changes on https://github.com/org/repo/pull/341
 Use review-changes on the current diff
-Use review-changes on PR 341 --dry-run
 ```
 
 Or by command name in hosts that expose one: `/review-changes`.
@@ -56,13 +55,27 @@ Se puede aprobar: sí.
 
 ```
 0 comentarios.
-Se puede aprobar: sí, pero lo apruebas tú — este skill no aprueba código.
+Se puede aprobar: sí.
+¿Apruebo el PR? No encontré hallazgos en 12 archivos.
+```
+
+```
+0 comentarios.
+Se puede aprobar: sí, pero lo apruebas tú — cobertura reducida: sin gh.
 Nada que enviar.
 ```
 
 The third line is a question whenever something would be sent, and it names
-exactly what a yes authorises. Under `--dry-run` it says `Dry run: no se envía
-nada.` instead, because there is no go to give.
+exactly what a yes authorises. When nothing would be sent it says why instead.
+
+A yes to publishing comments is not a yes to approving, and no answer carries
+over to the next run. There is no flag to make a run read-only, because every
+run already is one until you answer.
+
+**The approval is only offered when the looking actually happened.** On a diff
+that changes behavior it requires every routed profile and the verify pass to
+have run, with no reduced context. Anything less and the line reads `sí, pero lo
+apruebas tú — cobertura reducida`, with no question attached.
 
 ## Comment style
 
@@ -92,16 +105,16 @@ One file failing both conditions sends the whole diff back to the normal
 an unnecessary comment is cheaper than an approval nobody read.
 
 The approval is never automatic. The body is printed first, it says plainly that
-sending it approves the PR, and it waits for a go that covers the approval.
-`--dry-run` forbids it outright, and the same head commit is never approved
-twice.
+sending it approves the PR, and it waits for an answer to a question that names
+the approval. The same head commit is never approved twice.
 
 The prose is still reviewed. A docs-only diff can document an endpoint that does
 not exist or leave an OpenSpec task claiming something the code never did; those
 become notes in the approval body.
 
-A clean review of a diff that *does* change behavior still ends in the clean
-message, for a human to approve. Approving code is not something this skill does.
+A diff that *does* change behavior can also end in an approval, when the review
+ran to completion and nothing survived. That approval carries no body either,
+and it is offered only with full coverage.
 
 ## Re-reviewing a pull request
 
@@ -132,18 +145,11 @@ is matched by path and opening text, never by line number.
 ## Publishing, and checking first with `--dry-run`
 
 Nothing reaches a pull request without two gates: the skill prints the exact
-comment bodies and waits for your go, and the publisher itself can be run
+comment bodies and waits for your answer, and the publisher itself can be run
 without sending anything.
 
-`--dry-run` works at both levels. Passed to the skill it makes the whole run
-read-only — every pass still runs, nothing is ever sent, and that holds even if
-you then say to go ahead:
-
-```text
-Use review-changes on PR 341 --dry-run
-```
-
-Passed to the publisher it shows the exact payload:
+`--dry-run` belongs to the publisher. The skill needs no such flag: it asks
+before every write, so a run that is never answered sends nothing.
 
 ```bash
 # 1. See the payload. No network write, no review created.
@@ -265,7 +271,7 @@ review-changes/
 │   ├── frontend.md               # client state, a11y, weight
 │   └── security.md               # authz, injection, secrets
 ├── scripts/post_review.py        # deterministic publisher
-├── evals/evals.json              # 28 scenarios
+├── evals/evals.json              # 32 scenarios
 └── agents/openai.yaml            # host adapter
 ```
 
