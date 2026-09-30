@@ -4,7 +4,8 @@ Non-blocking code review. Loads the project's own documented rules first,
 verifies every finding adversarially, drops what this skill and other reviewers
 already said, and publishes the rest as GitHub suggestions.
 
-**It never approves and never requests changes.** Approval stays a human action.
+**It never requests changes.** It approves exactly one thing: a diff that
+changes no behavior, and only after you say to send it.
 
 ## Install
 
@@ -30,7 +31,8 @@ Or by command name in hosts that expose one: `/review-changes`.
 | **Adversarial verification** | A second pass tries to refute every candidate and can only confirm, adjust, or discard. It can never add a finding. |
 | **Never repeats itself** | On a re-review it finds its own earlier threads, reads what the author replied, and decides from that: fixed, does not apply, or still open. A comment it already made is never made again — not reworded, not at a new line after a rebase. |
 | **Deduped against other reviewers** | Collects existing inline threads, PR-level comments, and bot summaries — CodeRabbit, Codacy, Sonar, Copilot, humans — and drops findings already covered. Resolved threads stay closed. |
-| **Never blocks a merge** | One review with `event: COMMENT`. `APPROVE` and `REQUEST_CHANGES` are impossible by construction. |
+| **Never blocks a merge** | `REQUEST_CHANGES` is impossible by construction. The default event is `COMMENT`. |
+| **Docs-only diffs get approved, not peppered** | A change that alters no behavior — documentation, OpenSpec markdown, a comment-only edit to a code file — gets one `APPROVE` with the notes in its body instead of a wall of inline suggestions. It asks you first, every time. |
 | **Linters filter noise** | A finding the repository's configured and CI-enforced linter already reports is dropped and counted, not posted. |
 | **Visible coverage** | Every pass reports `ran`, `skipped:<reason>`, or `not-run:<reason>`. What was not reviewed is stated. |
 
@@ -41,6 +43,37 @@ the failing input, and a `suggestion` block when the fix replaces a line.
 Two lines of prose, ceiling. See [reference/comment-form.md](reference/comment-form.md).
 
 Posted text is independent of the session's conversation style.
+
+## Docs-only diffs
+
+Some pull requests change nothing that runs. Peppering them with inline
+suggestions is noise, so they take a different path: one review, `event:
+APPROVE`, every note inside the body.
+
+A diff qualifies when **every** changed file is either documentation, or a code
+file whose every added and removed line is a comment or a docstring.
+
+| Counts as documentation | Does not, and disqualifies the diff |
+|---|---|
+| `*.md`, `*.mdx`, `*.rst`, `*.adoc`, `*.txt` | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursor/rules/*`, `CONTRIBUTING.md`, `docs/adr/**` — rule contracts, not prose |
+| `openspec/**`, `docs/**` | `.github/workflows/*.yml`, `Dockerfile`, `Makefile`, `*.sql`, `package.json`, lockfiles, `.env*` |
+| `README*`, `CHANGELOG*`, `LICENSE*` | a comment that is a directive: `# rubocop:disable`, `// @ts-ignore`, `# noqa`, build tags |
+
+One file failing both conditions sends the whole diff back to the normal
+`COMMENT` review. When the classification is uncertain, it is a behavior change:
+an unnecessary comment is cheaper than an approval nobody read.
+
+The approval is never automatic. The body is printed first, it says plainly that
+sending it approves the PR, and it waits for a go that covers the approval.
+`--dry-run` forbids it outright, and the same head commit is never approved
+twice.
+
+The prose is still reviewed. A docs-only diff can document an endpoint that does
+not exist or leave an OpenSpec task claiming something the code never did; those
+become notes in the approval body.
+
+A clean review of a diff that *does* change behavior still ends in the clean
+message, for a human to approve. Approving code is not something this skill does.
 
 ## Re-reviewing a pull request
 
@@ -121,8 +154,34 @@ Read that last line before publishing:
 A high `degraded` count usually means the findings point at context the diff did
 not change — worth rechecking the line numbers before sending.
 
-Whether or not you pass the flag, `event` is `COMMENT`. The script has no code
-path that produces `APPROVE` or `REQUEST_CHANGES`.
+Without `--approve`, `event` is `COMMENT`. The script has no code path that
+produces `REQUEST_CHANGES` at all.
+
+### Approving a docs-only diff
+
+```bash
+python3 scripts/post_review.py --repo owner/name --pr 402 \
+  --approve --notes notes.json --dry-run   # inspect first
+python3 scripts/post_review.py --repo owner/name --pr 402 \
+  --approve --notes notes.json             # then approve
+```
+
+`notes.json` is a JSON array of already-formatted one-line strings:
+
+```json
+[
+  "🔵 `openspec/specs/pagos.md` — el endpoint `POST /refunds` no existe en el código.",
+  "🔵 `README.md` — el badge apunta al repo anterior."
+]
+```
+
+Omit `--notes` to approve with `Solo documentación. Sin observaciones.`
+
+`--approve` refuses `--findings` and `--replies`: the mode creates no inline
+comments, so an approval can never carry a code finding along with it. An answer
+owed to the author goes in its own run, before the approval. The approval also
+pins the head commit it approved, and the script refuses to approve that same
+commit twice.
 
 ### `findings.json`
 
@@ -167,6 +226,7 @@ review-changes/
 ├── reference/
 │   ├── project-rules.md          # rule discovery and precedence
 │   ├── verify.md                 # adversarial pass, discards only
+│   ├── docs-only.md              # diffs that change no behavior, and the approve flow
 │   ├── prior-reviews.md          # our own earlier threads, and what the author replied
 │   ├── existing-comments.md      # dedupe against other reviewers
 │   ├── comment-form.md           # shape of posted text
@@ -175,7 +235,7 @@ review-changes/
 │   ├── frontend.md               # client state, a11y, weight
 │   └── security.md               # authz, injection, secrets
 ├── scripts/post_review.py        # deterministic publisher
-├── evals/evals.json              # 16 scenarios
+├── evals/evals.json              # 24 scenarios
 └── agents/openai.yaml            # host adapter
 ```
 
@@ -193,5 +253,6 @@ Publishing and deduplication are then recorded as `not-run:no-pr-context`.
 One target per run: one PR, one branch comparison, or one working tree. No
 monorepo submodule walking, no PR stacks, no remediation plans, no thread
 resolution. It answers a question on one of its own threads; it never opens a
-discussion on someone else's. It stacks with other review tools by adding its own section rather
+discussion on someone else's. It approves only a diff that changes no behavior,
+never code. It stacks with other review tools by adding its own section rather
 than replacing theirs.

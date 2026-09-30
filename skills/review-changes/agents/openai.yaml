@@ -1,6 +1,6 @@
 interface:
   display_name: "Review Changes"
-  short_description: "Non-blocking code review that loads the project's own rules and never approves"
+  short_description: "Code review that loads the project's own rules, never blocks a merge, and approves only diffs that change no behavior"
   default_prompt: "Use review-changes on the current diff. Publish findings as non-blocking suggestions."
 
 policy:
@@ -8,7 +8,11 @@ policy:
   read_only_repository: true
   write_scopes:
     - github_pull_request_review_comment
-  forbidden_actions:
+    - github_pull_request_review_approve
+  gated_actions:
+    # Only for a diff that changes no behavior, and only after the user's
+    # explicit go on the printed body. Never under --dry-run.
     - pull_request_approve
+  forbidden_actions:
     - pull_request_request_changes
     - pull_request_merge

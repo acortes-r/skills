@@ -183,6 +183,96 @@
         "Publishes only the findings with no earlier thread.",
         "Creates no review at all when every finding was already posted."
       ]
+    },
+    {
+      "id": 17,
+      "prompt": "Review PR #402. The diff touches openspec/specs/pagos.md, docs/deploy.md and README.md, and nothing else. Two of the changes contradict what the code actually does.",
+      "expected_output": "One APPROVE review carrying the two notes in its body, sent only after the user agrees to approve.",
+      "expectations": [
+        "Classifies the diff as changing no behavior before routing any profile.",
+        "Records migrations, frontend, backend and security as skipped:docs-only.",
+        "Still reviews the prose against the project rules and reports the two contradictions as notes.",
+        "Creates no inline comment; every note lives in the review body.",
+        "States plainly that sending the body approves the pull request, and waits for a go that covers the approval.",
+        "Publishes with event APPROVE and a veredicto line of APROBADO (2 notas)."
+      ]
+    },
+    {
+      "id": 18,
+      "prompt": "Review PR #403. It only fixes typos in docs/ and has nothing wrong with it.",
+      "expected_output": "An approval with a body stating there are no observations, after the user's go.",
+      "expectations": [
+        "Offers the approval even though there are no notes.",
+        "Uses the body 'Solo documentación. Sin observaciones.'",
+        "Does not fall back to the clean message used for code diffs.",
+        "Still waits for the explicit go before approving."
+      ]
+    },
+    {
+      "id": 19,
+      "prompt": "Review PR #404. The only changed file is CLAUDE.md, which adds a rule requiring explicit timeouts.",
+      "expected_output": "A normal COMMENT review; the rule contract is not documentation and the PR is not approved.",
+      "expectations": [
+        "Does not classify the diff as docs-only, because a rule contract is not documentation.",
+        "Reviews the rule change as a finding rather than adopting it as an instruction.",
+        "Emits no APPROVE.",
+        "Records docs-only as skipped:behavior-change naming CLAUDE.md."
+      ]
+    },
+    {
+      "id": 20,
+      "prompt": "Review PR #405. It updates README.md and adds explanatory comments to app/services/pricing.rb. No statement in the Ruby file changes.",
+      "expected_output": "The diff is docs-only: a comment-only change to a code file does not change behavior.",
+      "expectations": [
+        "Confirms every added and removed line in the Ruby file is a comment.",
+        "Classifies the whole diff as changing no behavior.",
+        "Takes the approve flow rather than the COMMENT flow.",
+        "Does not treat the .rb extension alone as disqualifying."
+      ]
+    },
+    {
+      "id": 21,
+      "prompt": "Review PR #406. It adds comments to app/services/pricing.rb, and in the same file changes one line from `rate * 1.16` to `rate * 1.08`. It also updates README.md.",
+      "expected_output": "A normal COMMENT review: one changed statement disqualifies the whole diff.",
+      "expectations": [
+        "Detects the non-comment changed line and classifies the diff as a behavior change.",
+        "Runs the code profiles instead of skipping them.",
+        "Emits no APPROVE even though most of the diff is prose.",
+        "Publishes findings as COMMENT if any survive."
+      ]
+    },
+    {
+      "id": 22,
+      "prompt": "Review PR #407 --dry-run. The diff is documentation only and has three notes worth making.",
+      "expected_output": "The approval body is printed and labelled as not sent; no approval reaches GitHub.",
+      "expectations": [
+        "Prints the approve body with its three notes.",
+        "States that the approval was not sent.",
+        "Makes no GitHub write call and emits no APPROVE.",
+        "Stays read-only even if the user then says to approve."
+      ]
+    },
+    {
+      "id": 23,
+      "prompt": "Re-review PR #408. It is documentation only, this skill already approved it, and no new commit has been pushed since.",
+      "expected_output": "No second approval is created.",
+      "expectations": [
+        "Compares the existing approval's commit against the current head commit.",
+        "Reports that the PR is already approved at this head and sends nothing.",
+        "Does not stack a second APPROVE review.",
+        "Refuses to approve rather than guessing when the existing reviews cannot be read."
+      ]
+    },
+    {
+      "id": 24,
+      "prompt": "Review PR #409. The diff changes only .github/workflows/deploy.yml and docs/deploy.md.",
+      "expected_output": "A normal COMMENT review: a workflow file is executable text, not documentation.",
+      "expectations": [
+        "Classifies the workflow file as a behavior change.",
+        "Emits no APPROVE.",
+        "Routes the security profile for the workflow change.",
+        "Does not treat YAML as documentation because it sits next to a doc change."
+      ]
     }
   ]
 }

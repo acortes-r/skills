@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
-"""Publish review findings as ONE non-blocking GitHub review.
+"""Publish review findings as ONE GitHub review.
 
 Invariants enforced here rather than left to the caller:
 
-  * The review event is always COMMENT. APPROVE and REQUEST_CHANGES cannot be
-    produced by this script at all.
+  * The review event is COMMENT, or APPROVE when --approve is passed for a diff
+    the caller has already classified as changing no behavior. REQUEST_CHANGES
+    cannot be produced by this script at all.
+  * --approve creates no inline comments and refuses --findings outright, so an
+    approval can never carry a code finding along with it.
+  * The same head commit is never approved twice.
   * Every inline target is validated against the diff before posting, so a
     finding anchored outside a hunk degrades into the review body instead of
     failing the whole review with a 422.
@@ -15,6 +19,7 @@ Invariants enforced here rather than left to the caller:
 Usage:
     post_review.py --repo owner/name --pr 123 \
         [--findings findings.json] [--replies replies.json] [--dry-run]
+    post_review.py --repo owner/name --pr 123 --approve [--notes notes.json]
 
 findings.json is a JSON array:
     [{"path": "app/x.rb", "line": 42, "side": "RIGHT", "body": "..."}]
@@ -25,6 +30,10 @@ replies.json answers questions the author asked on our own earlier threads:
 `in_reply_to` is the id of the comment being answered. A reply whose text is
 already on that thread is skipped.
 
+notes.json is a JSON array of already-formatted one-line strings, used only
+with --approve:
+    ["\u25cf `README.md` - el badge apunta al repo anterior."]
+
 Requires python3 and an authenticated GitHub CLI. Does not require jq.
 """
 
@@ -34,9 +43,10 @@ import re
 import subprocess
 import sys
 
-# Only these two review events are meaningful for this tool, and only one is
-# allowed. Approval and blocking are the human's decision, never the script's.
+# Blocking a merge is never this script's decision, so REQUEST_CHANGES has no
+# code path. APPROVE has one, reachable only through --approve.
 REVIEW_EVENT = "COMMENT"
+APPROVE_EVENT = "APPROVE"
 
 HUNK = re.compile(r"^@@ .*?\+(\d+)")
 
@@ -144,14 +154,118 @@ def load_array(path, label):
     return data
 
 
+def head_sha(repo, pr):
+    try:
+        raw = gh(["pr", "view", str(pr), "--repo", repo, "--json", "headRefOid"])
+    except RuntimeError as err:
+        fail(f"could not read the head commit of PR #{pr} in {repo}: {err}")
+    return json.loads(raw or "{}").get("headRefOid", "")
+
+
+def viewer_login():
+    """The login this run publishes as, or "" when it cannot be read."""
+    try:
+        return gh(["api", "user", "--jq", ".login"]).strip()
+    except RuntimeError:
+        return ""
+
+
+def already_approved(repo, pr, sha, login):
+    """True when this account already approved this exact head commit.
+
+    A re-review of an unchanged docs-only PR must not stack approvals.
+    """
+    try:
+        raw = gh(["api", f"repos/{repo}/pulls/{pr}/reviews", "--paginate"])
+    except RuntimeError as err:
+        # Refuse rather than risk a duplicate approval: an extra approval is
+        # not something the caller can take back.
+        fail(f"could not read existing reviews ({err}). Not approving.")
+    for item in json.loads(raw or "[]"):
+        if item.get("state") != "APPROVED":
+            continue
+        if sha and item.get("commit_id") != sha:
+            continue
+        if login and (item.get("user") or {}).get("login") != login:
+            continue
+        return True
+    return False
+
+
+def approve_body(notes):
+    if not notes:
+        return "Solo documentación. Sin observaciones."
+    plural = "notas" if len(notes) != 1 else "nota"
+    return (f"Solo documentación. {len(notes)} {plural}, ninguna bloquea.\n\n"
+            + "\n".join(notes))
+
+
+def run_approve(args):
+    """Approve a diff the caller has classified as changing no behavior."""
+    notes = [str(n).strip() for n in load_array(args.notes, "notes")
+             if str(n).strip()]
+
+    try:
+        gh(["auth", "status"])
+    except RuntimeError:
+        fail("gh is not authenticated. Run: gh auth login")
+
+    sha = head_sha(args.repo, args.pr)
+    login = viewer_login()
+
+    if already_approved(args.repo, args.pr, sha, login):
+        print(f"post_review: PR #{args.pr} is already approved at "
+              f"{sha[:7] or 'its head commit'}. Nothing sent.")
+        return
+
+    payload = {"event": APPROVE_EVENT, "body": approve_body(notes)}
+    if sha:
+        payload["commit_id"] = sha
+
+    if args.dry_run:
+        print("post_review: dry run. The approval was NOT sent. Payload:")
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        print(f"post_review: notes={len(notes)} approve=not-sent")
+        return
+
+    try:
+        response = gh(
+            ["api", f"repos/{args.repo}/pulls/{args.pr}/reviews", "--input", "-"],
+            stdin=json.dumps(payload),
+        )
+    except RuntimeError as err:
+        print(f"post_review: the API rejected the approval. Nothing was "
+              f"published.\n{err}", file=sys.stderr)
+        print(json.dumps(payload, indent=2, ensure_ascii=False), file=sys.stderr)
+        sys.exit(1)
+
+    url = json.loads(response or "{}").get("html_url", "")
+    print(f"post_review: published as {APPROVE_EVENT} — notes={len(notes)}")
+    if url:
+        print(f"post_review: {url}")
+
+
 def main():
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument("--repo", required=True, help="owner/name")
     parser.add_argument("--pr", required=True, type=int)
     parser.add_argument("--findings", help="JSON array file")
     parser.add_argument("--replies", help="JSON array file")
+    parser.add_argument("--notes", help="JSON array of strings, with --approve")
+    parser.add_argument("--approve", action="store_true",
+                        help="approve a diff that changes no behavior")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+
+    if args.approve:
+        if args.findings or args.replies:
+            fail("--approve creates no inline comments. Drop --findings and "
+                 "--replies; send those in their own run.")
+        run_approve(args)
+        return
+
+    if args.notes:
+        fail("--notes is only meaningful with --approve")
 
     if not args.findings and not args.replies:
         fail("nothing to do: pass --findings, --replies, or both")

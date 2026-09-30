@@ -108,3 +108,27 @@ severity present, for example:
 ```
 
 No hallazgos means no review body, because no review is created.
+
+## Approve body
+
+A docs-only diff approves through the body alone — no inline comments exist in
+that mode. One opening line, then one line per note.
+
+Each note is `path` · what is wrong, keeping its severity marker. Same
+telegraphic Spanish, same ceiling of one line. No ```suggestion blocks: the
+approval already went through, and a suggestion block invites a change the
+merge no longer waits for.
+
+```markdown
+Solo documentación. 3 notas, ninguna bloquea.
+
+🔵 `openspec/specs/pagos.md` — el endpoint `POST /refunds` documentado no existe en el código.
+🔵 `docs/deploy.md` — la variable `REDIS_URL` quedó con el nombre viejo.
+🔵 `README.md` — el badge apunta al repo anterior.
+```
+
+No notes:
+
+```markdown
+Solo documentación. Sin observaciones.
+```
