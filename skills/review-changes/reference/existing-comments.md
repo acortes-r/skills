@@ -1,13 +1,17 @@
 ---
 name: existing-comments
-description: Dedupe pass against reviewers already on the PR, for `review-changes`.
+description: Dedupe pass against other reviewers already on the PR, for `review-changes`.
 ---
 
 # Existing comments
 
-Use this profile only inside `review-changes`, after verification and before
-publishing. Its purpose is to not repeat what a human or another bot already
-said on this pull request.
+Use this profile only inside `review-changes`, after `prior-reviews.md` and
+before publishing. Its purpose is to not repeat what a human or another bot
+already said on this pull request.
+
+Scope is **other** reviewers. Threads this skill opened on an earlier run belong
+to `prior-reviews.md` and are already classified by the time this pass runs; do
+not reclassify them here.
 
 ## Contents
 - Collect
@@ -17,6 +21,8 @@ said on this pull request.
 - Ledger
 
 ## Collect
+
+Run the thread query once per review. `prior-reviews.md` reads the same result.
 
 ```bash
 # Inline threads with resolution state — preferred source
@@ -62,7 +68,8 @@ Drop a survivor when it is already covered:
 - An **outdated** thread covers it and the current diff no longer contains the
   problem.
 - A bot's PR-level summary names it, even with no inline thread.
-- Your own comment from a previous run of this skill covers it.
+- `prior-reviews.md` already gave it a disposition. That pass decides; this one
+  does not revisit its verdict.
 
 Matching is semantic, not textual. "N+1 en el loop de reservas" and "this query
 runs once per iteration" on the same line are one finding.

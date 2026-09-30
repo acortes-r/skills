@@ -60,6 +60,32 @@ Este `Faraday.get` no lo tiene.
 - Omit it when the fix spans files, needs a new file, or needs a decision. Then
   the second line states the fix in words.
 
+## Replies to the author
+
+A reply answers a question the author asked on one of our threads. It is not a
+finding and does not use the finding shape.
+
+- No severity emoji. The severity lives on the original comment.
+- Answer only what was asked. Do not restate the finding, do not re-argue it,
+  and do not add a second finding to the thread.
+- Three lines of prose, ceiling.
+- A ```suggestion block only when the answer *is* a line replacement.
+- The author's question stands on its own terms. If the question shows the
+  finding was wrong, say so in one line and stop.
+
+````markdown
+El retry viene del webhook de Stripe, no del cliente: Stripe reintenta el
+mismo `event.id` hasta 3 veces en 24 h y cada intento entra a este método.
+Con la idempotency key el segundo intento es un no-op.
+````
+
+Wrong finding:
+
+````markdown
+Tienes razón, `charge!` ya corre dentro de la transacción. El hallazgo no
+aplica.
+````
+
 ## Never in posted text
 
 - Session style directives of any kind, or text written in a compressed
@@ -69,6 +95,8 @@ Este `Faraday.get` no lo tiene.
 - Pass names, confidence scores, evidence trails, ledger rows, dedupe counts.
 - Praise, greetings, sign-offs, emoji beyond the single severity marker.
 - Advice to split the work into separate branches.
+- Anything about a re-review having run: disposition names, thread counts,
+  "ya comenté esto antes", or a nudge that an earlier comment is still open.
 
 ## Review body
 

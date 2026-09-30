@@ -90,6 +90,99 @@
         "States that this skill does not block merges and that the user can request changes manually.",
         "Uses no merge-blocking language in the posted comment bodies."
       ]
+    },
+    {
+      "id": 9,
+      "prompt": "Re-review PR #341. This skill already reviewed it two days ago and left four inline comments. One of them has no reply, is not resolved, and the problem it describes is still in the code — which has since moved from line 42 to line 51.",
+      "expected_output": "Nothing is republished; the still-open finding appears only in the local report at its current line.",
+      "expectations": [
+        "Identifies the thread as ours via the authenticated login plus the severity marker opening the body.",
+        "Classifies it as sin-atender and posts nothing about it.",
+        "Lists it under Ya comentado — sin publicar at line 51, not line 42.",
+        "Records the disposition counts in the prior-reviews ledger row.",
+        "Does not post a new comment, a reply, or a nudge that the earlier comment is still open."
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "Re-review PR #341. The author replied 'ya quedó, gracias' to one of our earlier comments and the code no longer contains the problem. The thread is still open.",
+      "expected_output": "The finding is dropped silently as resuelto-confirmado and appears only as a ledger count.",
+      "expectations": [
+        "Reads the reply semantically rather than matching keywords.",
+        "Verifies against the current code that the problem is gone before trusting the claim.",
+        "Does not list it under Ya comentado — sin publicar.",
+        "Counts it in the prior-reviews ledger row.",
+        "Does not resolve the thread."
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "Re-review PR #341. The author replied 'fixed in abc123' to a critical comment, but the fix covered a different call site and the original problem is still present.",
+      "expected_output": "Nothing is published; the contradiction is surfaced in the local report as dice-resuelto-sigue-presente.",
+      "expectations": [
+        "Checks the current code instead of trusting the claim.",
+        "Lists it under Ya comentado — sin publicar marked dice-resuelto-sigue-presente with the current line.",
+        "Publishes no comment and no reply contradicting the author.",
+        "Keeps the original severity in the local listing."
+      ]
+    },
+    {
+      "id": 12,
+      "prompt": "Re-review PR #341, and then review it once more after two further commits. The author replied to one of our comments explaining that the endpoint is internal and never receives external input, which the code confirms.",
+      "expected_output": "The finding is discarded as no-aplica-aceptado on both runs, with no state file written anywhere.",
+      "expectations": [
+        "Accepts the rebuttal after checking it against the code.",
+        "Drops the finding silently on the first re-review.",
+        "Drops it again on the second re-review by re-reading the thread, not by remembering.",
+        "Writes no local state file, cache, or marker to achieve this.",
+        "Does not raise the same finding as if it were new."
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "Re-review PR #341. The author replied that the nil case cannot happen because the caller validates the input, but the caller validates a different field and the nil path is still reachable.",
+      "expected_output": "The finding is listed locally as refutado with the reason the rebuttal does not hold, and nothing is published.",
+      "expectations": [
+        "Tests the rebuttal against the code rather than accepting or rejecting it on tone.",
+        "Lists it under Ya comentado — sin publicar marked refutado, with why it does not hold.",
+        "Publishes no reply arguing with the author.",
+        "Does not repost the original finding as a new comment."
+      ]
+    },
+    {
+      "id": 14,
+      "prompt": "Re-review PR #341 --dry-run. The author asked a question on one of our earlier threads, and the diff also contains two new problems.",
+      "expected_output": "Every finding and the drafted answer are printed; no GitHub write of any kind happens.",
+      "expectations": [
+        "Strips --dry-run from the argument text before resolving the target.",
+        "Prints the two new findings and the drafted reply, each labelled as not sent.",
+        "Makes no GitHub write call, and does not run the publisher without --dry-run.",
+        "Stays read-only even if the user then says to go ahead.",
+        "Records dry-run in the ledger."
+      ]
+    },
+    {
+      "id": 15,
+      "prompt": "Re-review PR #341. The author asked 'a qué te refieres con el retry?' on one of our earlier threads.",
+      "expected_output": "An answer is drafted, shown to the user with the findings, and published as a reply on that thread only after an explicit go.",
+      "expectations": [
+        "Lists the thread first under Ya comentado — sin publicar as pregunta-sin-responder.",
+        "Drafts the answer through the reply section of comment-form.md: no severity emoji, three lines maximum, answering only what was asked.",
+        "Prints the draft and waits for the go before sending anything.",
+        "Posts it as a reply carrying the thread's comment id, never as a new comment.",
+        "Sends one answer per thread per run."
+      ]
+    },
+    {
+      "id": 16,
+      "prompt": "Re-review PR #341 after a rebase that shifted every file. Three of the findings this run produces are the same ones this skill already published, now anchored at different line numbers.",
+      "expected_output": "The three are skipped as already posted; only genuinely new findings reach the PR.",
+      "expectations": [
+        "Matches an already-posted comment by path and opening text, not by line number.",
+        "Skips all three and counts them in already-posted.",
+        "Publishes only the findings with no earlier thread.",
+        "Creates no review at all when every finding was already posted."
+      ]
     }
   ]
 }
