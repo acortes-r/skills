@@ -32,9 +32,37 @@ Or by command name in hosts that expose one: `/review-changes`.
 | **Never repeats itself** | On a re-review it finds its own earlier threads, reads what the author replied, and decides from that: fixed, does not apply, or still open. A comment it already made is never made again — not reworded, not at a new line after a rebase. |
 | **Deduped against other reviewers** | Collects existing inline threads, PR-level comments, and bot summaries — CodeRabbit, Codacy, Sonar, Copilot, humans — and drops findings already covered. Resolved threads stay closed. |
 | **Never blocks a merge** | `REQUEST_CHANGES` is impossible by construction. The default event is `COMMENT`. |
-| **Docs-only diffs get approved, not peppered** | A change that alters no behavior — documentation, OpenSpec markdown, a comment-only edit to a code file — gets one `APPROVE` with the notes in its body instead of a wall of inline suggestions. It asks you first, every time. |
+| **Docs-only diffs get approved, not peppered** | A change that alters no behavior — documentation, OpenSpec markdown, a comment-only edit to a code file — gets one `APPROVE` with the notes in its body instead of a wall of inline suggestions. Nothing worth saying means a bare approval, no body. It asks you first, every time. |
+| **The summary states the count and the question** | Every run reports how many comments there are by severity, whether the PR can be approved, and asks for the one thing a yes would authorise. |
 | **Linters filter noise** | A finding the repository's configured and CI-enforced linter already reports is dropped and counted, not posted. |
 | **Visible coverage** | Every pass reports `ran`, `skipped:<reason>`, or `not-run:<reason>`. What was not reviewed is stated. |
+
+## The resumen block
+
+Every run ends with the same three lines, printed before the comment bodies and
+repeated at the top of the report:
+
+```
+7 comentarios: 1 🔴 critical, 2 🟠 important, 4 🔵 suggestion.
+Se puede aprobar: no — hay 1 critical.
+¿Publico los 7 comentarios?
+```
+
+```
+0 comentarios. Solo documentación, sin notas.
+Se puede aprobar: sí.
+¿Apruebo el PR sin comentario?
+```
+
+```
+0 comentarios.
+Se puede aprobar: sí, pero lo apruebas tú — este skill no aprueba código.
+Nada que enviar.
+```
+
+The third line is a question whenever something would be sent, and it names
+exactly what a yes authorises. Under `--dry-run` it says `Dry run: no se envía
+nada.` instead, because there is no go to give.
 
 ## Comment style
 
@@ -175,7 +203,9 @@ python3 scripts/post_review.py --repo owner/name --pr 402 \
 ]
 ```
 
-Omit `--notes` to approve with `Solo documentación. Sin observaciones.`
+Omit `--notes` to approve with no body at all. A docs-only diff with nothing
+wrong in it gets an approval and silence — a comment announcing that there is
+nothing to comment is still noise on the pull request.
 
 `--approve` refuses `--findings` and `--replies`: the mode creates no inline
 comments, so an approval can never carry a code finding along with it. An answer
@@ -235,7 +265,7 @@ review-changes/
 │   ├── frontend.md               # client state, a11y, weight
 │   └── security.md               # authz, injection, secrets
 ├── scripts/post_review.py        # deterministic publisher
-├── evals/evals.json              # 24 scenarios
+├── evals/evals.json              # 28 scenarios
 └── agents/openai.yaml            # host adapter
 ```
 

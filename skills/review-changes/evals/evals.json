@@ -199,11 +199,12 @@
     },
     {
       "id": 18,
-      "prompt": "Review PR #403. It only fixes typos in docs/ and has nothing wrong with it.",
-      "expected_output": "An approval with a body stating there are no observations, after the user's go.",
+      "prompt": "Review PR #403. It only fixes typos in docs/ and has nothing wrong with it at all — no notes worth making.",
+      "expected_output": "A bare approval: no body, no comment, after the user's go.",
       "expectations": [
-        "Offers the approval even though there are no notes.",
-        "Uses the body 'Solo documentación. Sin observaciones.'",
+        "Offers the approval even though there is nothing to say.",
+        "Asks ¿Apruebo el PR sin comentario? in the resumen block.",
+        "Publishes APPROVE with no body at all, not a body stating there is nothing to comment.",
         "Does not fall back to the clean message used for code diffs.",
         "Still waits for the explicit go before approving."
       ]
@@ -272,6 +273,52 @@
         "Emits no APPROVE.",
         "Routes the security profile for the workflow change.",
         "Does not treat YAML as documentation because it sits next to a doc change."
+      ]
+    },
+    {
+      "id": 25,
+      "prompt": "Review PR #410. The diff changes behavior and seven findings survive verification: one critical, two important, four suggestions.",
+      "expected_output": "A resumen block naming the counts per severity, stating the PR cannot be approved, and asking whether to publish.",
+      "expectations": [
+        "Line 1 reads 7 comentarios: 1 🔴 critical, 2 🟠 important, 4 🔵 suggestion.",
+        "Line 2 reads Se puede aprobar: no — hay 1 critical, naming the highest severity present.",
+        "Line 3 asks ¿Publico los 7 comentarios?",
+        "Prints the block above the comment bodies in step 7 and repeats it as part 1 of the report.",
+        "Does not publish anything before the answer."
+      ]
+    },
+    {
+      "id": 26,
+      "prompt": "Review PR #411. The diff changes application code and nothing is wrong with it.",
+      "expected_output": "The resumen block says it can be approved by the user, asks nothing, and no review is created.",
+      "expectations": [
+        "Line 1 reads 0 comentarios.",
+        "Line 2 reads Se puede aprobar: sí, pero lo apruebas tú — este skill no aprueba código.",
+        "Line 3 is Nada que enviar. rather than a question.",
+        "Emits no APPROVE, because the diff changes behavior.",
+        "Makes no GitHub write call."
+      ]
+    },
+    {
+      "id": 27,
+      "prompt": "Review PR #412 --dry-run. The diff changes behavior and three findings survive.",
+      "expected_output": "The resumen block reports the counts but asks nothing, because the flag already decided.",
+      "expectations": [
+        "Line 1 names the three findings by severity.",
+        "Line 3 is Dry run: no se envía nada. rather than a question.",
+        "Does not ask for a go it cannot act on.",
+        "Makes no GitHub write call."
+      ]
+    },
+    {
+      "id": 28,
+      "prompt": "Review PR #413. The diff is documentation only and two notes are worth making, and the author also asked a question on one of our earlier threads.",
+      "expected_output": "The reply is sent in its own publisher run, then the approval carries the two notes.",
+      "expectations": [
+        "Counts the two notes in the resumen block and asks ¿Apruebo el PR con las 2 notas?",
+        "Does not pass --replies together with --approve.",
+        "Sends the reply in its own run, before the approval.",
+        "Publishes exactly one APPROVE review carrying both notes in its body."
       ]
     }
   ]

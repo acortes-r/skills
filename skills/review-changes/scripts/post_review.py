@@ -7,7 +7,8 @@ Invariants enforced here rather than left to the caller:
     the caller has already classified as changing no behavior. REQUEST_CHANGES
     cannot be produced by this script at all.
   * --approve creates no inline comments and refuses --findings outright, so an
-    approval can never carry a code finding along with it.
+    approval can never carry a code finding along with it. With no notes it
+    carries no body either.
   * The same head commit is never approved twice.
   * Every inline target is validated against the diff before posting, so a
     finding anchored outside a hunk degrades into the review body instead of
@@ -193,8 +194,13 @@ def already_approved(repo, pr, sha, login):
 
 
 def approve_body(notes):
+    """The approval body, or "" when there is nothing to say.
+
+    An approval with no notes carries no body: a comment stating that there is
+    nothing to comment is still noise on the pull request.
+    """
     if not notes:
-        return "Solo documentación. Sin observaciones."
+        return ""
     plural = "notas" if len(notes) != 1 else "nota"
     return (f"Solo documentación. {len(notes)} {plural}, ninguna bloquea.\n\n"
             + "\n".join(notes))
@@ -218,7 +224,10 @@ def run_approve(args):
               f"{sha[:7] or 'its head commit'}. Nothing sent.")
         return
 
-    payload = {"event": APPROVE_EVENT, "body": approve_body(notes)}
+    payload = {"event": APPROVE_EVENT}
+    body = approve_body(notes)
+    if body:
+        payload["body"] = body
     if sha:
         payload["commit_id"] = sha
 

@@ -183,6 +183,41 @@ Unknown from the diff: write `desconocido` rather than guessing.
 
 A docs-only diff: write the line as `sin cambios de comportamiento` and move on.
 
+## The resumen block
+
+Printed twice: at the top of step 7, above the bodies, and again as part 1 of
+the step 8 report. Three lines, always in this order, always with real numbers.
+
+```
+<N> comentarios: <a> 🔴 critical, <b> 🟠 important, <c> 🔵 suggestion.
+Se puede aprobar: <veredicto>.
+<la pregunta>
+```
+
+Line 1 omits a severity with a count of zero. No comments at all: write
+`0 comentarios.` A docs-only diff adds its note count: `0 comentarios. Solo
+documentación, 3 notas.`
+
+Line 2, by case:
+
+| Case | `Se puede aprobar:` |
+|---|---|
+| diff changes behavior, findings survive | `no — hay <highest severity present>` |
+| diff changes behavior, no findings | `sí, pero lo apruebas tú — este skill no aprueba código` |
+| diff changes no behavior | `sí` |
+
+Line 3 is a question, and it is never optional. It names exactly what the yes
+would authorize:
+
+| Case | Question |
+|---|---|
+| findings to publish | `¿Publico los <N> comentarios?` |
+| replies to send as well | `¿Publico los <N> comentarios y la respuesta a <@autor>?` |
+| docs-only with notes | `¿Apruebo el PR con las <N> notas?` |
+| docs-only with no notes | `¿Apruebo el PR sin comentario?` |
+| nothing to send | no question — write `Nada que enviar.` |
+| `--dry-run` | no question — write `Dry run: no se envía nada.` |
+
 ## Step 7 — Publish, or return the clean message
 
 This step sends three kinds of text: new findings, answers to questions the
@@ -195,8 +230,10 @@ holds even when the user says to go ahead; the flag governs the run.
 
 **Docs-only diff:** follow the approve flow in `reference/docs-only.md`. Format
 the notes through the approve-body section of `reference/comment-form.md`, print
-the body, state plainly that sending it approves the pull request, and wait for a
-go that covers the approval. Then:
+the resumen block and the body, state plainly that sending it approves the pull
+request, and wait for a go that covers the approval. With no notes there is no
+body at all: the approval goes in bare, and the resumen block asks
+`¿Apruebo el PR sin comentario?`. Then:
 
 ```bash
 python3 scripts/post_review.py --repo <owner>/<name> --pr <n> \
@@ -206,7 +243,7 @@ python3 scripts/post_review.py --repo <owner>/<name> --pr <n> \
 ```
 
 `notes.json` is a JSON array of strings, each already formatted. Omit it to
-approve with no observations. `--approve` refuses `--findings` and `--replies`:
+approve with an empty body — nothing to say means nothing is said. `--approve` refuses `--findings` and `--replies`:
 this mode creates no inline comments. An answer owed to the author goes in its
 own publisher run, before the approval. The publisher also refuses to approve
 twice at the same head commit.
@@ -215,10 +252,12 @@ twice at the same head commit.
 
 1. Format every comment through `reference/comment-form.md`. Answers to
    `pregunta-sin-responder` threads use its reply section, not the finding shape.
-2. Print the exact bodies and their targets to the user — findings first, then
-   any replies with the question each one answers. Nothing is sent yet.
-3. Ask for the go. On anything other than a clear yes, stop and keep everything
-   local. A go covers exactly what was printed.
+2. Print the resumen block, then the exact bodies and their targets — findings
+   first, then any replies with the question each one answers. Nothing is sent
+   yet.
+3. The resumen block's third line is the go request. On anything other than a
+   clear yes, stop and keep everything local. A go covers exactly what was
+   printed.
 4. On a yes, write the survivors to a JSON array, the replies to another, and
    run the publisher. It builds one review with `event: COMMENT`, validates
    every inline target against the diff, degrades an untargetable finding into
@@ -239,10 +278,9 @@ with `body` already formatted by `reference/comment-form.md`.
 `in_reply_to` is the id of the comment being answered. Omit the flag when there
 is nothing to answer.
 
-**No survivors:** create nothing. Return exactly:
+**No survivors:** create nothing. Return the resumen block, then:
 
 ```
-Todo bien — se puede aprobar.
 Revisado: <N> archivos, <M> líneas. Reglas del proyecto: <K> aplicables, 0 violadas.
 Duplicados omitidos: <D>. Cubierto por tooling: <T>.
 ```
@@ -254,7 +292,7 @@ is fine.
 
 The report is these eight parts, in this order:
 
-1. **Veredicto** — one line: `COMENTADO (<N> comentarios)`, `APROBADO (<N> notas)`, or `LIMPIO (se puede aprobar)`
+1. **Veredicto** — the resumen block, verbatim, with its question
 2. **Reglas aplicables** — the step 0 table, or `not-run:no-project-rules-found`
 3. **🔴 critical** — `path:line` · failing input to wrong result · fix
 4. **🟠 important** — same shape; a rule violation quotes the rule

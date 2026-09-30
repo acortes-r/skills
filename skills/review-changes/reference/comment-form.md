@@ -127,8 +127,6 @@ Solo documentación. 3 notas, ninguna bloquea.
 🔵 `README.md` — el badge apunta al repo anterior.
 ```
 
-No notes:
-
-```markdown
-Solo documentación. Sin observaciones.
-```
+No notes: **no body at all.** The approval goes in bare. Nothing to say means
+nothing is said, and a line stating there is nothing to say is still noise on
+the pull request.

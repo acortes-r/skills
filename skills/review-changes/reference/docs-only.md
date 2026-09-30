@@ -95,12 +95,17 @@ unknown syntax means behavior change.
 3. Review the prose against the project rules anyway. A docs-only diff can still
    contradict a spec, document an endpoint that does not exist, or leave an
    OpenSpec task claiming something the code never did. Those are notes.
-4. Print the review body and say plainly that sending it **approves the pull
-   request**. Nothing is sent yet.
+4. Print the resumen block and the review body, and say plainly that sending it
+   **approves the pull request**. Nothing is sent yet.
 5. Ask for the go. The go has to be for the approval, not just for the text. On
    anything else, keep it local.
 6. On a yes, publish with `--approve`. No inline comments are created in this
    mode; every note lives in the body.
+
+No notes at all means no body. The approval goes in bare and the question is
+`¿Apruebo el PR sin comentario?`. A docs-only diff with nothing wrong in it
+gets an approval and silence, not a comment announcing that there is nothing to
+comment.
 
 Dry run: print the body, state that the approval was not sent, and stop.
 
