@@ -84,6 +84,11 @@ Classify every thread of ours into exactly one:
 No state file is kept. Every disposition is derived from the PR on each run, so
 an accepted rebuttal keeps holding without anything being remembered locally.
 
+`sin-atender` and `dice-resuelto-sigue-presente` describe a problem that is
+still live. Both withhold the approval in the resumen block, the same way an
+open thread from another reviewer does. `resuelto-confirmado`,
+`no-aplica-aceptado` and `cerrado` are settled and leave it available.
+
 ## Check whether the problem is still present
 
 Only for threads that need it: `resuelto-confirmado` vs `dice-resuelto-sigue-presente`,

@@ -74,6 +74,28 @@ Drop a survivor when it is already covered:
 Matching is semantic, not textual. "N+1 en el loop de reservas" and "this query
 runs once per iteration" on the same line are one finding.
 
+## Record the state of what covered it
+
+Dropping is not the end of the decision. Every drop carries the state of the
+thread that caused it, because that state decides whether the pull request can
+be approved:
+
+| Covering thread | State | Consequence |
+|---|---|---|
+| open thread, any author | `abierto` | the problem is still live. The approval is not offered |
+| resolved thread | `cerrado` | someone decided. Does not block the approval |
+| outdated thread, problem gone from the diff | `cerrado` | the code moved past it |
+| bot summary with no thread, nothing resolved it | `abierto` | a summary is not a resolution |
+
+**Dropping a finding is not the same as not having one.** A finding dropped onto
+an open thread means the problem exists, is unfixed, and is already being
+discussed. Reporting that as "no encontré hallazgos" would be false, and
+approving on it would approve known-open problems.
+
+Pass the `abierto` count and its per-source breakdown to the resumen block in
+`SKILL.md`. It never reaches GitHub — the author already has those threads, and
+a comment pointing at a conversation they are already having adds nothing.
+
 ## Keep
 
 - Nothing existing covers it.
