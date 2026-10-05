@@ -13,3 +13,11 @@ tmp/
 # Working files that can hold real PR content
 findings.json
 findings.*.json
+replies.json
+replies.*.json
+notes.json
+notes.*.json
+
+# Python
+__pycache__/
+*.pyc
