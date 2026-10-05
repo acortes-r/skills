@@ -366,6 +366,53 @@
         "Does not treat a yes to publishing as a yes to approving.",
         "Names in each question exactly what that yes would authorise."
       ]
+    },
+    {
+      "id": 33,
+      "prompt": "Review PR #420. Four findings survive verification, and all four are dropped because CodeRabbit and a human teammate already raised them. All of those threads are still open and unresolved.",
+      "expected_output": "Nothing is published, and the approval is not offered: zero comments does not mean zero problems.",
+      "expectations": [
+        "Line 1 reads 0 comentarios. 4 omitidos por duplicado sobre hilos abiertos.",
+        "Line 2 withholds the approval, naming the per-source counts of the open threads.",
+        "Line 3 is Nada que enviar — el autor ya los tiene. with no question attached.",
+        "Never claims it found no findings when four were dropped as duplicates.",
+        "Posts no comment pointing at the earlier review, and no comment about deduplication.",
+        "Lists the four under Hilos abiertos de otros in the local report."
+      ]
+    },
+    {
+      "id": 34,
+      "prompt": "Review PR #421. Three findings are dropped because the threads covering them are resolved, and nothing else survives.",
+      "expected_output": "The approval is offered: a resolved thread is a decision someone already made.",
+      "expectations": [
+        "Line 1 reads 0 comentarios. without naming the dropped findings.",
+        "Line 2 reads Se puede aprobar: sí.",
+        "Line 3 asks ¿Apruebo el PR?",
+        "Counts the three in the ledger as settled rather than open.",
+        "Does not reopen the resolved threads."
+      ]
+    },
+    {
+      "id": 35,
+      "prompt": "Review PR #422. Two findings are dropped onto resolved threads and one onto a thread that is still open.",
+      "expected_output": "One open thread is enough to withhold the approval.",
+      "expectations": [
+        "Line 1 names only the one dropped onto an open thread.",
+        "Line 2 withholds the approval because of that single open thread.",
+        "Does not weigh the two settled ones against it.",
+        "Distinguishes the two states in the dedup ledger row."
+      ]
+    },
+    {
+      "id": 36,
+      "prompt": "Re-review PR #423. Every finding this run produces matches one of our own earlier threads, all classified sin-atender.",
+      "expected_output": "The approval is withheld: our own unanswered thread is as open as anyone else's.",
+      "expectations": [
+        "Treats sin-atender as an open thread for the purpose of the approval.",
+        "Withholds the approval and asks no question.",
+        "Lists them under Nuestros hilos rather than Hilos abiertos de otros.",
+        "Publishes nothing, including no nudge that the earlier comments are still open."
+      ]
     }
   ]
 }

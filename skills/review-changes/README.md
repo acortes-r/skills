@@ -29,7 +29,7 @@ Or by command name in hosts that expose one: `/review-changes`.
 | **Project rules are first-class** | Reads `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` — including the nested ones in every directory the diff touches — plus `.cursor/rules`, `CONTRIBUTING.md`, and `docs/adr`. Rule findings quote the exact text and heading. Missing rule files are reported as a gap, not skipped silently. |
 | **Adversarial verification** | A second pass tries to refute every candidate and can only confirm, adjust, or discard. It can never add a finding. |
 | **Never repeats itself** | On a re-review it finds its own earlier threads, reads what the author replied, and decides from that: fixed, does not apply, or still open. A comment it already made is never made again — not reworded, not at a new line after a rebase. |
-| **Deduped against other reviewers** | Collects existing inline threads, PR-level comments, and bot summaries — CodeRabbit, Codacy, Sonar, Copilot, humans — and drops findings already covered. Resolved threads stay closed. |
+| **Deduped against other reviewers** | Collects existing inline threads, PR-level comments, and bot summaries — CodeRabbit, Codacy, Sonar, Copilot, humans — and drops findings already covered. Resolved threads stay closed. A finding dropped onto an **open** thread still counts as a problem: it withholds the approval instead of vanishing. |
 | **Never blocks a merge** | `REQUEST_CHANGES` is impossible by construction. The default event is `COMMENT`. |
 | **Docs-only diffs get approved, not peppered** | A change that alters no behavior — documentation, OpenSpec markdown, a comment-only edit to a code file — gets one `APPROVE` with the notes in its body instead of a wall of inline suggestions. Nothing worth saying means a bare approval, no body. It asks you first, every time. |
 | **The summary states the count and the question** | Every run reports how many comments there are by severity, whether the PR can be approved, and asks for the one thing a yes would authorise. |
@@ -76,6 +76,20 @@ run already is one until you answer.
 that changes behavior it requires every routed profile and the verify pass to
 have run, with no reduced context. Anything less and the line reads `sí, pero lo
 apruebas tú — cobertura reducida`, with no question attached.
+
+**Zero comments does not mean zero problems.** If the findings were dropped
+because CodeRabbit or a teammate already raised them and those threads are
+still open, the problems are unfixed and the approval is withheld:
+
+```
+0 comentarios. 4 omitidos por duplicado sobre hilos abiertos.
+Se puede aprobar: no — 4 hallazgos ya están abiertos en hilos de coderabbit (3), @juan (1).
+Nada que enviar — el autor ya los tiene.
+```
+
+Nothing is posted in that case either. The author is already having that
+conversation; a comment pointing at it adds nothing. Dropped onto a *resolved*
+thread is different — someone decided, and the approval stays available.
 
 ## Comment style
 
@@ -271,7 +285,7 @@ review-changes/
 │   ├── frontend.md               # client state, a11y, weight
 │   └── security.md               # authz, injection, secrets
 ├── scripts/post_review.py        # deterministic publisher
-├── evals/evals.json              # 32 scenarios
+├── evals/evals.json              # 36 scenarios
 └── agents/openai.yaml            # host adapter
 ```
 
