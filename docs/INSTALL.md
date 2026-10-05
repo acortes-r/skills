@@ -80,4 +80,7 @@ python3 -c "import json;print(len(json.load(open('skills/review-changes/evals/ev
 
 # publisher compiles
 python3 -m py_compile skills/review-changes/scripts/post_review.py && echo "publisher OK"
+
+# publisher behaves: 12 tests, gh stubbed, no network
+python3 skills/review-changes/tests/test_post_review.py
 ```
