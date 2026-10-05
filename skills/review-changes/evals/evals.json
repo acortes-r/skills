@@ -413,6 +413,29 @@
         "Lists them under Nuestros hilos rather than Hilos abiertos de otros.",
         "Publishes nothing, including no nudge that the earlier comments are still open."
       ]
+    },
+    {
+      "id": 37,
+      "prompt": "Review PR #424. Five findings survive, the highest being important, and nothing blocks publishing them.",
+      "expected_output": "The resumen block carries one marker per line, drawn from the closed set.",
+      "expectations": [
+        "Line 1 opens with 💬 followed by the count and the per-severity breakdown.",
+        "Line 2 opens with 🚫 because findings survive.",
+        "Line 3 opens with ❓ because an answer is expected.",
+        "Uses exactly one marker per line and invents none.",
+        "Keeps the markers out of every posted comment body."
+      ]
+    },
+    {
+      "id": 38,
+      "prompt": "Review PR #425. The diff is documentation only with two notes, and the user asks why the summary shows ⚠️ on another PR.",
+      "expected_output": "This run shows ✅ and ❓; the markers map to distinct states rather than decorating.",
+      "expectations": [
+        "Line 2 opens with ✅ because the approval is available to give.",
+        "Reserves ⚠️ for approvable-but-not-by-this-skill, never mixing it with ✅.",
+        "Uses 📭 only when nothing is waiting on the user.",
+        "Does not add markers to the posted approve body."
+      ]
     }
   ]
 }

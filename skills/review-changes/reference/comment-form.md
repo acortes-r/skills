@@ -93,7 +93,9 @@ aplica.
 - Severity language that reads as a merge block: "no mergear", "blocker",
   "cambios requeridos". Findings are suggestions; the merge is not gated.
 - Pass names, confidence scores, evidence trails, ledger rows, dedupe counts.
-- Praise, greetings, sign-offs, emoji beyond the single severity marker.
+- Praise, greetings, sign-offs, emoji beyond the single severity marker. The
+  markers of the resumen block — 💬 ✅ ⚠️ 🚫 🔒 ❔ ❓ 📭 — are local only and
+  never appear in posted text.
 - Advice to split the work into separate branches.
 - Anything about a re-review having run: disposition names, thread counts,
   "ya comenté esto antes", or a nudge that an earlier comment is still open.

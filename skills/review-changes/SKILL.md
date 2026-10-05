@@ -188,10 +188,18 @@ Printed twice: at the top of step 7, above the bodies, and again as part 1 of
 the step 8 report. Three lines, always in this order, always with real numbers.
 
 ```
-<N> comentarios: <a> 🔴 critical, <b> 🟠 important, <c> 🔵 suggestion.
-Se puede aprobar: <veredicto>.
-<la pregunta>
+💬 <N> comentarios: <a> 🔴 critical, <b> 🟠 important, <c> 🔵 suggestion.
+<marcador> Se puede aprobar: <veredicto>.
+<marcador> <la pregunta>
 ```
+
+**The markers are a closed set.** Pick from the tables below; never invent one,
+never use a second one on the same line. They exist to make the verdict legible
+at a glance, not to decorate.
+
+This block is local. Like the rest of the report, it never reaches GitHub —
+`reference/comment-form.md` allows exactly one emoji in posted text, the
+severity marker on a finding.
 
 Line 1 omits a severity with a count of zero. No comments at all: write
 `0 comentarios.` A docs-only diff adds its note count: `0 comentarios. Solo
@@ -202,17 +210,22 @@ comments does not mean zero problems: `0 comentarios. 4 omitidos por duplicado
 sobre hilos abiertos.` Findings dropped onto a settled thread are not — those
 are genuinely closed and belong in the ledger alone.
 
-Line 2, by case:
+Line 2, by case. The marker follows the verdict, so the three shapes of answer
+are distinguishable without reading the sentence:
 
-| Case | `Se puede aprobar:` |
+| Case | Line 2 |
 |---|---|
-| diff changes behavior, findings survive | `no — hay <highest severity present>` |
-| findings dropped onto open threads | `no — <D> hallazgos ya están abiertos en hilos de <source (n)>, <source (n)>` |
-| diff changes behavior, no findings, full coverage | `sí` |
-| diff changes behavior, no findings, reduced coverage | `sí, pero lo apruebas tú — cobertura reducida: <reason>` |
-| diff changes no behavior | `sí` |
-| already approved at this head commit | `ya aprobado en <short sha>` |
-| no PR context | `desconocido — sin contexto de PR` |
+| diff changes behavior, findings survive | 🚫 `Se puede aprobar: no — hay <highest severity present>` |
+| findings dropped onto open threads | 🚫 `Se puede aprobar: no — <D> hallazgos ya están abiertos en hilos de <source (n)>, <source (n)>` |
+| diff changes behavior, no findings, full coverage | ✅ `Se puede aprobar: sí` |
+| diff changes behavior, no findings, reduced coverage | ⚠️ `Se puede aprobar: sí, pero lo apruebas tú — cobertura reducida: <reason>` |
+| diff changes no behavior | ✅ `Se puede aprobar: sí` |
+| already approved at this head commit | 🔒 `Se puede aprobar: ya aprobado en <short sha>` |
+| no PR context | ❔ `Se puede aprobar: desconocido — sin contexto de PR` |
+
+✅ means a yes is available to give. ⚠️ means it is approvable but not by this
+skill. 🚫 means it is not approvable at all. 🔒 and ❔ mean the question does not
+arise.
 
 **Full coverage** means every routed profile and the verify pass are `ran` in
 the ledger, with no `reduced-context:*` recorded. Anything less and the approval
@@ -231,17 +244,52 @@ it states why instead. It names exactly what a yes authorizes:
 
 | Case | Line 3 |
 |---|---|
-| findings to publish | `¿Publico los <N> comentarios?` |
-| findings plus a reply owed | `¿Publico los <N> comentarios y la respuesta a <@autor>?` |
-| docs-only with notes | `¿Apruebo el PR con las <N> notas?` |
-| docs-only with no notes | `¿Apruebo el PR sin comentario?` |
-| docs-only with notes plus a reply owed | `¿Respondo a <@autor> y apruebo el PR con las <N> notas?` |
-| behavior diff, no findings, full coverage | `¿Apruebo el PR? No encontré hallazgos en <N> archivos.` |
-| behavior diff, no findings, reduced coverage | `Nada que enviar.` |
-| findings dropped onto open threads | `Nada que enviar — el autor ya los tiene.` |
-| already approved at this head commit | `Ya aprobado en <short sha>. Nada que enviar.` |
-| no PR context | `Sin contexto de PR: no puedo publicar ni aprobar.` |
-| empty diff | `Nada que revisar.` |
+| findings to publish | ❓ `¿Publico los <N> comentarios?` |
+| findings plus a reply owed | ❓ `¿Publico los <N> comentarios y la respuesta a <@autor>?` |
+| docs-only with notes | ❓ `¿Apruebo el PR con las <N> notas?` |
+| docs-only with no notes | ❓ `¿Apruebo el PR sin comentario?` |
+| docs-only with notes plus a reply owed | ❓ `¿Respondo a <@autor> y apruebo el PR con las <N> notas?` |
+| behavior diff, no findings, full coverage | ❓ `¿Apruebo el PR? No encontré hallazgos en <N> archivos.` |
+| behavior diff, no findings, reduced coverage | 📭 `Nada que enviar.` |
+| findings dropped onto open threads | 📭 `Nada que enviar — el autor ya los tiene.` |
+| already approved at this head commit | 📭 `Ya aprobado en <short sha>. Nada que enviar.` |
+| no PR context | 📭 `Sin contexto de PR: no puedo publicar ni aprobar.` |
+| empty diff | 📭 `Nada que revisar.` |
+
+❓ is the only marker that means an answer is expected. 📭 closes the run. Seeing
+one or the other is enough to know whether anything is waiting on the user.
+
+## Worked examples
+
+```
+💬 7 comentarios: 1 🔴 critical, 2 🟠 important, 4 🔵 suggestion.
+🚫 Se puede aprobar: no — hay 1 critical.
+❓ ¿Publico los 7 comentarios?
+```
+
+```
+💬 0 comentarios.
+✅ Se puede aprobar: sí.
+❓ ¿Apruebo el PR? No encontré hallazgos en 12 archivos.
+```
+
+```
+💬 0 comentarios. 4 omitidos por duplicado sobre hilos abiertos.
+🚫 Se puede aprobar: no — 4 hallazgos ya están abiertos en hilos de coderabbit (3), @juan (1).
+📭 Nada que enviar — el autor ya los tiene.
+```
+
+```
+💬 0 comentarios. Solo documentación, 3 notas.
+✅ Se puede aprobar: sí.
+❓ ¿Apruebo el PR con las 3 notas?
+```
+
+```
+💬 0 comentarios.
+⚠️ Se puede aprobar: sí, pero lo apruebas tú — cobertura reducida: security not-run.
+📭 Nada que enviar.
+```
 
 A yes to one question authorizes that one thing. Publishing comments is not
 approving, and an answer never carries over to the next run.

@@ -42,28 +42,41 @@ Every run ends with the same three lines, printed before the comment bodies and
 repeated at the top of the report:
 
 ```
-7 comentarios: 1 🔴 critical, 2 🟠 important, 4 🔵 suggestion.
-Se puede aprobar: no — hay 1 critical.
-¿Publico los 7 comentarios?
+💬 7 comentarios: 1 🔴 critical, 2 🟠 important, 4 🔵 suggestion.
+🚫 Se puede aprobar: no — hay 1 critical.
+❓ ¿Publico los 7 comentarios?
 ```
 
 ```
-0 comentarios. Solo documentación, sin notas.
-Se puede aprobar: sí.
-¿Apruebo el PR sin comentario?
+💬 0 comentarios. Solo documentación, sin notas.
+✅ Se puede aprobar: sí.
+❓ ¿Apruebo el PR sin comentario?
 ```
 
 ```
-0 comentarios.
-Se puede aprobar: sí.
-¿Apruebo el PR? No encontré hallazgos en 12 archivos.
+💬 0 comentarios.
+✅ Se puede aprobar: sí.
+❓ ¿Apruebo el PR? No encontré hallazgos en 12 archivos.
 ```
 
 ```
-0 comentarios.
-Se puede aprobar: sí, pero lo apruebas tú — cobertura reducida: sin gh.
-Nada que enviar.
+💬 0 comentarios.
+⚠️ Se puede aprobar: sí, pero lo apruebas tú — cobertura reducida: sin gh.
+📭 Nada que enviar.
 ```
+
+The markers are a closed set, one per line:
+
+| | Line 2 — can it be approved | | Line 3 — is anything waiting on you |
+|---|---|---|---|
+| ✅ | yes, and you can say so now | ❓ | a question; nothing is sent until you answer |
+| ⚠️ | yes, but not by this skill | 📭 | nothing to send; the run is closed |
+| 🚫 | no | | |
+| 🔒 | already approved at this head | | |
+| ❔ | unknown — no PR context | | |
+
+They live in the terminal only. Posted comments carry exactly one emoji, the
+severity marker.
 
 The third line is a question whenever something would be sent, and it names
 exactly what a yes authorises. When nothing would be sent it says why instead.
@@ -82,9 +95,9 @@ because CodeRabbit or a teammate already raised them and those threads are
 still open, the problems are unfixed and the approval is withheld:
 
 ```
-0 comentarios. 4 omitidos por duplicado sobre hilos abiertos.
-Se puede aprobar: no — 4 hallazgos ya están abiertos en hilos de coderabbit (3), @juan (1).
-Nada que enviar — el autor ya los tiene.
+💬 0 comentarios. 4 omitidos por duplicado sobre hilos abiertos.
+🚫 Se puede aprobar: no — 4 hallazgos ya están abiertos en hilos de coderabbit (3), @juan (1).
+📭 Nada que enviar — el autor ya los tiene.
 ```
 
 Nothing is posted in that case either. The author is already having that
@@ -285,7 +298,7 @@ review-changes/
 │   ├── frontend.md               # client state, a11y, weight
 │   └── security.md               # authz, injection, secrets
 ├── scripts/post_review.py        # deterministic publisher
-├── evals/evals.json              # 36 scenarios
+├── evals/evals.json              # 38 scenarios
 └── agents/openai.yaml            # host adapter
 ```
 
