@@ -37,7 +37,7 @@ the update to take effect.
 | Skill | What it does |
 |---|---|
 | [review-changes](skills/review-changes/) | Non-blocking code review: loads the project's own rules, verifies findings adversarially, dedupes against its own earlier comments and other reviewers, publishes GitHub suggestions, approves only after asking, never on its own |
-| [start-task](skills/start-task/) | Opens a git worktree and branch for a new task as a Herdr workspace, named from the Linear issue or the task description; proposes the name and waits before creating anything |
+| [start-task](skills/start-task/) | Opens a git worktree and branch for a new task as a Herdr workspace, named from the Linear issue or the task description, and hands the gathered context to a Claude agent there; proposes the name and base and waits before creating anything |
 
 ## Layout
 
