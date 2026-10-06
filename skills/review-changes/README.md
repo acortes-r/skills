@@ -60,6 +60,12 @@ repeated at the top of the report:
 ```
 
 ```
+💬 1 comentario: 1 🔵 suggestion.
+✅ Se puede aprobar: sí — solo sugerencias, ninguna bloquea.
+❓ ¿Apruebo el PR y publico 1 comentario?
+```
+
+```
 💬 0 comentarios.
 ⚠️ Se puede aprobar: sí, pero lo apruebas tú — cobertura reducida: sin gh.
 📭 Nada que enviar.
@@ -139,9 +145,23 @@ The prose is still reviewed. A docs-only diff can document an endpoint that does
 not exist or leave an OpenSpec task claiming something the code never did; those
 become notes in the approval body.
 
-A diff that *does* change behavior can also end in an approval, when the review
-ran to completion and nothing survived. That approval carries no body either,
-and it is offered only with full coverage.
+A diff that *does* change behavior can also end in an approval, in two cases.
+When the review ran to completion and nothing survived, the approval carries no
+body either, and it is offered only with full coverage.
+
+When the only survivors are 🔵 suggestions, they go out **attached** to the
+approval, as one review:
+
+```
+event: APPROVE
+body:  1 comentario (1 suggestion). Ninguno bloquea el merge.
+comments: the suggestions, anchored on their lines
+```
+
+A suggestion is an improvement with a concrete alternative; it never gated the
+merge, so it does not gate the approval either. A 🔴 or 🟠 does — the publisher
+refuses to approve alongside one, or alongside a finding with no severity marker
+at all.
 
 ## Re-reviewing a pull request
 
@@ -240,11 +260,20 @@ Omit `--notes` to approve with no body at all. A docs-only diff with nothing
 wrong in it gets an approval and silence — a comment announcing that there is
 nothing to comment is still noise on the pull request.
 
-`--approve` refuses `--findings` and `--replies`: the mode creates no inline
-comments, so an approval can never carry a code finding along with it. An answer
-owed to the author goes in its own run, before the approval. The approval also
-pins the head commit it approved, and the script refuses to approve that same
-commit twice.
+`--approve` also takes `--findings`, for the case where only suggestions
+survived:
+
+```bash
+python3 scripts/post_review.py --repo owner/name --pr 206 \
+  --approve --findings findings.json
+```
+
+It refuses a finding whose body opens with 🔴 or 🟠, and one with no severity
+marker at all — an approval never goes out next to something that contradicts
+it. `--findings` and `--notes` are separate runs. `--replies` is refused in
+either case; an answer owed to the author goes out before the approval. The
+approval pins the head commit it approved, and the script refuses to approve
+that same commit twice.
 
 ### `findings.json`
 
@@ -298,14 +327,14 @@ review-changes/
 │   ├── frontend.md               # client state, a11y, weight
 │   └── security.md               # authz, injection, secrets
 ├── scripts/post_review.py        # deterministic publisher
-├── tests/test_post_review.py     # 12 tests over the publisher, gh stubbed
-├── evals/evals.json              # 38 scenarios
+├── tests/test_post_review.py     # 15 tests over the publisher, gh stubbed
+├── evals/evals.json              # 41 scenarios
 └── agents/openai.yaml            # host adapter
 ```
 
 ## Tests
 
-The publisher has 12 tests. No network, no dependencies, no test runner:
+The publisher has 15 tests. No network, no dependencies, no test runner:
 
 ```bash
 python3 skills/review-changes/tests/test_post_review.py
@@ -316,7 +345,7 @@ are expensive to get wrong — a comment is never posted twice, and the same hea
 commit is never approved twice — plus the flag combinations the publisher
 refuses.
 
-`evals/evals.json` is a different thing: 38 declarative scenarios describing what
+`evals/evals.json` is a different thing: 41 declarative scenarios describing what
 the skill should do. The repository has no eval runner, so they are read, not
 executed.
 

@@ -436,6 +436,40 @@
         "Uses 📭 only when nothing is waiting on the user.",
         "Does not add markers to the posted approve body."
       ]
+    },
+    {
+      "id": 39,
+      "prompt": "Review PR #206. The diff changes JavaScript test helpers and one finding survives verification: a 🔵 suggestion that a comment block sits above the wrong constant.",
+      "expected_output": "One APPROVE review carrying the suggestion inline, after the user agrees to both.",
+      "expectations": [
+        "Line 2 reads Se puede aprobar: sí — solo sugerencias, ninguna bloquea.",
+        "Line 3 asks ¿Apruebo el PR y publico 1 comentario?, covering both actions in one question.",
+        "Publishes one review with event APPROVE whose comments carry the suggestion on its line.",
+        "Uses the ordinary review body naming the count, not the docs-only wording.",
+        "Does not withhold the approval merely because a finding exists."
+      ]
+    },
+    {
+      "id": 40,
+      "prompt": "Review PR #430. Three findings survive: two 🔵 suggestions and one 🟠 important.",
+      "expected_output": "A COMMENT review; one important finding withholds the approval regardless of the suggestions.",
+      "expectations": [
+        "Line 2 reads Se puede aprobar: no — hay 1 important.",
+        "Publishes all three as a COMMENT review rather than splitting them.",
+        "Emits no APPROVE.",
+        "Does not approve the two suggestions separately from the important one."
+      ]
+    },
+    {
+      "id": 41,
+      "prompt": "Review PR #431. Only suggestions survive, and the publisher is handed a finding whose body has no severity marker.",
+      "expected_output": "The publisher refuses rather than approving next to an unclassified finding.",
+      "expectations": [
+        "Refuses the run and sends nothing.",
+        "Names the finding whose body carries no severity marker.",
+        "Does not guess a severity in order to proceed.",
+        "Leaves the pull request untouched."
+      ]
     }
   ]
 }

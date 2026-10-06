@@ -132,3 +132,16 @@ Solo documentación. 3 notas, ninguna bloquea.
 No notes: **no body at all.** The approval goes in bare. Nothing to say means
 nothing is said, and a line stating there is nothing to say is still noise on
 the pull request.
+
+### Approving with suggestions attached
+
+When the approval carries 🔵 findings inline, the body is the ordinary review
+body instead, and the comments keep their normal shape — severity marker,
+failing input, ```suggestion block:
+
+```markdown
+1 comentario (1 suggestion). Ninguno bloquea el merge.
+```
+
+Nothing in that body hints that the review approved. The green check already
+says it, and a comment explaining the approval is noise.

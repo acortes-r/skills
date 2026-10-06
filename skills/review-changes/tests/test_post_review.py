@@ -198,12 +198,44 @@ def test_an_approval_by_someone_else_does_not_block_ours():
           len(sent) == 1, out)
 
 
-def test_approve_refuses_inline_findings():
-    findings = write("f3.json", [{"path": "a.rb", "line": 1, "body": "x"}])
+def test_approve_carries_a_suggestion_inline():
+    findings = write("f3.json", [{"path": "app/models/user.rb", "line": 51,
+                                  "body": "🔵 Extrae el timeout a constante."}])
     sent = []
     out = run(["--approve", "--findings", findings], sent=sent)
-    check("approve refuses --findings",
-          "creates no inline comments" in out and "EXIT 1" in out and not sent, out)
+    sole = sent[0] if sent else {}
+    check("approve carries a suggestion inline",
+          sole.get("event") == "APPROVE"
+          and sole.get("comments", [{}])[0].get("line") == 51
+          and sole.get("body") == "1 comentario (1 suggestion). Ninguno bloquea el merge.",
+          out)
+
+
+def test_approve_refuses_a_blocking_finding():
+    findings = write("f4.json", [{"path": "app/models/user.rb", "line": 51,
+                                  "body": "🟠 `user` puede ser nil."}])
+    sent = []
+    out = run(["--approve", "--findings", findings], sent=sent)
+    check("approve refuses an important finding",
+          "blocking severity" in out and "EXIT 1" in out and not sent, out)
+
+
+def test_approve_refuses_a_finding_with_no_severity():
+    findings = write("f5.json", [{"path": "app/models/user.rb", "line": 51,
+                                  "body": "Extrae el timeout a constante."}])
+    sent = []
+    out = run(["--approve", "--findings", findings], sent=sent)
+    check("approve refuses a finding with no severity marker",
+          "no severity marker" in out and "EXIT 1" in out and not sent, out)
+
+
+def test_approve_refuses_findings_and_notes_together():
+    findings = write("f6.json", [{"path": "a.rb", "line": 1, "body": "🔵 x."}])
+    sent = []
+    out = run(["--approve", "--findings", findings,
+               "--notes", write("n.json", NOTES)], sent=sent)
+    check("approve takes findings or notes, not both",
+          "not both" in out and "EXIT 1" in out and not sent, out)
 
 
 def test_notes_require_approve():

@@ -6,9 +6,9 @@ Invariants enforced here rather than left to the caller:
   * The review event is COMMENT, or APPROVE when --approve is passed for a diff
     the caller has already classified as changing no behavior. REQUEST_CHANGES
     cannot be produced by this script at all.
-  * --approve creates no inline comments and refuses --findings outright, so an
-    approval can never carry a code finding along with it. With no notes it
-    carries no body either.
+  * --approve carries only 🔵 findings. A 🔴 or 🟠 among them is refused, so an
+    approval can never go out alongside a finding that contradicts it. With
+    nothing at all to say it carries no body either.
   * The same head commit is never approved twice.
   * Every inline target is validated against the diff before posting, so a
     finding anchored outside a hunk degrades into the review body instead of
@@ -21,6 +21,7 @@ Usage:
     post_review.py --repo owner/name --pr 123 \
         [--findings findings.json] [--replies replies.json] [--dry-run]
     post_review.py --repo owner/name --pr 123 --approve [--notes notes.json]
+    post_review.py --repo owner/name --pr 123 --approve --findings findings.json
 
 findings.json is a JSON array:
     [{"path": "app/x.rb", "line": 42, "side": "RIGHT", "body": "..."}]
@@ -48,6 +49,12 @@ import sys
 # code path. APPROVE has one, reachable only through --approve.
 REVIEW_EVENT = "COMMENT"
 APPROVE_EVENT = "APPROVE"
+
+# A 🔵 is an improvement with a concrete alternative; it does not gate a merge,
+# so it can ride along with an approval. 🔴 and 🟠 cannot: an approval that
+# carries one would contradict itself.
+SUGGESTION = "\U0001F535"
+BLOCKING_MARKERS = ("\U0001F534", "\U0001F7E0")
 
 HUNK = re.compile(r"^@@ .*?\+(\d+)")
 
@@ -194,7 +201,7 @@ def already_approved(repo, pr, sha, login):
 
 
 def approve_body(notes):
-    """The approval body, or "" when there is nothing to say.
+    """The approval body for a docs-only run, or "" when there is nothing to say.
 
     An approval with no notes carries no body: a comment stating that there is
     nothing to comment is still noise on the pull request.
@@ -206,10 +213,35 @@ def approve_body(notes):
             + "\n".join(notes))
 
 
+def suggestion_body(count):
+    """The approval body when the approval carries inline suggestions."""
+    plural = "comentarios" if count != 1 else "comentario"
+    return f"{count} {plural} ({count} suggestion). Ninguno bloquea el merge."
+
+
+def reject_blocking_findings(findings):
+    """Refuse to approve alongside anything heavier than a suggestion."""
+    for finding in findings:
+        body = (finding.get("body") or "").lstrip()
+        if body.startswith(BLOCKING_MARKERS):
+            fail(f"--approve carries only {SUGGESTION} findings. "
+                 f"{finding.get('path')} opens with a blocking severity.")
+        if not body.startswith(SUGGESTION):
+            fail(f"--approve carries only {SUGGESTION} findings. "
+                 f"{finding.get('path')} has no severity marker.")
+
+
 def run_approve(args):
-    """Approve a diff the caller has classified as changing no behavior."""
+    """Approve a pull request the caller has already decided is approvable.
+
+    Two shapes. A docs-only run carries its notes as prose in the body. A run
+    whose only surviving findings are suggestions carries them inline, since a
+    suggestion does not gate the merge the approval just cleared.
+    """
     notes = [str(n).strip() for n in load_array(args.notes, "notes")
              if str(n).strip()]
+    findings = load_array(args.findings, "findings")
+    reject_blocking_findings(findings)
 
     try:
         gh(["auth", "status"])
@@ -224,17 +256,56 @@ def run_approve(args):
               f"{sha[:7] or 'its head commit'}. Nothing sent.")
         return
 
+    inline, degraded = [], []
+    if findings:
+        try:
+            patch = gh(["pr", "diff", str(args.pr), "--repo", args.repo])
+        except RuntimeError as err:
+            fail(f"could not read the diff for PR #{args.pr} in {args.repo}: {err}")
+        targets = commentable_lines(patch)
+        comments = existing_comments(args.repo, args.pr)
+        posted = posted_signatures(comments) if comments is not None else set()
+
+        for finding in findings:
+            path = finding.get("path")
+            body = (finding.get("body") or "").strip()
+            line = finding.get("line")
+            if not path or not body:
+                print("post_review: skipping a finding with no path or no body",
+                      file=sys.stderr)
+                continue
+            if (path, first_line(body)) in posted:
+                continue
+            if line is not None and (path, int(line)) in targets:
+                inline.append({"path": path, "line": int(line),
+                               "side": finding.get("side") or "RIGHT",
+                               "body": body})
+            else:
+                anchor = f"`{path}:{line}`" if line is not None else f"`{path}`"
+                degraded.append(f"- {anchor} — {' '.join(body.split())}")
+
     payload = {"event": APPROVE_EVENT}
-    body = approve_body(notes)
-    if body:
+    if inline or degraded:
+        body = suggestion_body(len(inline) + len(degraded))
+        if degraded:
+            body += "\n\nFuera de las líneas del diff:\n" + "\n".join(degraded)
         payload["body"] = body
+        if inline:
+            payload["comments"] = inline
+    else:
+        body = approve_body(notes)
+        if body:
+            payload["body"] = body
     if sha:
         payload["commit_id"] = sha
+
+    counters = (f"notes={len(notes)} inline={len(inline)} "
+                f"degraded={len(degraded)}")
 
     if args.dry_run:
         print("post_review: dry run. The approval was NOT sent. Payload:")
         print(json.dumps(payload, indent=2, ensure_ascii=False))
-        print(f"post_review: notes={len(notes)} approve=not-sent")
+        print(f"post_review: {counters} approve=not-sent")
         return
 
     try:
@@ -249,7 +320,7 @@ def run_approve(args):
         sys.exit(1)
 
     url = json.loads(response or "{}").get("html_url", "")
-    print(f"post_review: published as {APPROVE_EVENT} — notes={len(notes)}")
+    print(f"post_review: published as {APPROVE_EVENT} — {counters}")
     if url:
         print(f"post_review: {url}")
 
@@ -267,9 +338,12 @@ def main():
     args = parser.parse_args()
 
     if args.approve:
-        if args.findings or args.replies:
-            fail("--approve creates no inline comments. Drop --findings and "
-                 "--replies; send those in their own run.")
+        if args.replies:
+            fail("--approve does not carry replies. Send them in their own run, "
+                 "before the approval.")
+        if args.findings and args.notes:
+            fail("--approve takes --findings or --notes, not both: inline "
+                 "suggestions and docs-only notes are different runs.")
         run_approve(args)
         return
 
