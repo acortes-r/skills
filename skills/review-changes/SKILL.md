@@ -215,7 +215,8 @@ are distinguishable without reading the sentence:
 
 | Case | Line 2 |
 |---|---|
-| diff changes behavior, findings survive | 🚫 `Se puede aprobar: no — hay <highest severity present>` |
+| diff changes behavior, a 🔴 or 🟠 survives | 🚫 `Se puede aprobar: no — hay <highest severity present>` |
+| diff changes behavior, only 🔵 survive | ✅ `Se puede aprobar: sí — solo sugerencias, ninguna bloquea` |
 | findings dropped onto open threads | 🚫 `Se puede aprobar: no — <D> hallazgos ya están abiertos en hilos de <source (n)>, <source (n)>` |
 | diff changes behavior, no findings, full coverage | ✅ `Se puede aprobar: sí` |
 | diff changes behavior, no findings, reduced coverage | ⚠️ `Se puede aprobar: sí, pero lo apruebas tú — cobertura reducida: <reason>` |
@@ -226,6 +227,12 @@ are distinguishable without reading the sentence:
 ✅ means a yes is available to give. ⚠️ means it is approvable but not by this
 skill. 🚫 means it is not approvable at all. 🔒 and ❔ mean the question does not
 arise.
+
+**A 🔵 does not withhold the approval.** The severity table calls it "improvement
+with a concrete alternative", and every posted comment already says the merge is
+not gated. Holding the approval back for one would contradict both. A 🔴 or 🟠
+does withhold it: those name something broken or risky, and an approval carrying
+one would argue with itself.
 
 **Full coverage** means every routed profile and the verify pass are `ran` in
 the ledger, with no `reduced-context:*` recorded. Anything less and the approval
@@ -244,7 +251,8 @@ it states why instead. It names exactly what a yes authorizes:
 
 | Case | Line 3 |
 |---|---|
-| findings to publish | ❓ `¿Publico los <N> comentarios?` |
+| findings to publish, approval withheld | ❓ `¿Publico los <N> comentarios?` |
+| only 🔵 survive | ❓ `¿Apruebo el PR y publico <N> comentario(s)?` |
 | findings plus a reply owed | ❓ `¿Publico los <N> comentarios y la respuesta a <@autor>?` |
 | docs-only with notes | ❓ `¿Apruebo el PR con las <N> notas?` |
 | docs-only with no notes | ❓ `¿Apruebo el PR sin comentario?` |
@@ -286,6 +294,12 @@ one or the other is enough to know whether anything is waiting on the user.
 ```
 
 ```
+💬 1 comentario: 1 🔵 suggestion.
+✅ Se puede aprobar: sí — solo sugerencias, ninguna bloquea.
+❓ ¿Apruebo el PR y publico 1 comentario?
+```
+
+```
 💬 0 comentarios.
 ⚠️ Se puede aprobar: sí, pero lo apruebas tú — cobertura reducida: security not-run.
 📭 Nada que enviar.
@@ -299,6 +313,19 @@ approving, and an answer never carries over to the next run.
 This step sends three kinds of text: new findings, answers to questions the
 author asked on our earlier threads, and — only on a docs-only diff — an
 approval. All of them go through the same gate.
+
+**Only 🔵 survive on a diff that changes behavior:** the approval and the
+comments go out as one object. Format the comments normally, print the resumen
+block and the bodies, and wait for an answer that covers both. On a yes:
+
+```bash
+python3 scripts/post_review.py --repo <owner>/<name> --pr <n> \
+  --approve --findings findings.json
+```
+
+The publisher refuses to approve alongside a 🔴 or a 🟠, and alongside a finding
+with no severity marker at all. One review, `event: APPROVE`, the suggestions
+anchored inline, and a body naming the count.
 
 **Docs-only diff:** follow the approve flow in `reference/docs-only.md`. Format
 the notes through the approve-body section of `reference/comment-form.md`, print
@@ -315,7 +342,8 @@ python3 scripts/post_review.py --repo <owner>/<name> --pr <n> \
 ```
 
 `notes.json` is a JSON array of strings, each already formatted. Omit it to
-approve with an empty body — nothing to say means nothing is said. `--approve` refuses `--findings` and `--replies`:
+approve with an empty body — nothing to say means nothing is said. `--notes` and
+`--findings` are different runs and cannot be combined. `--approve` refuses `--findings` and `--replies`:
 this mode creates no inline comments. An answer owed to the author goes in its
 own publisher run, before the approval. The publisher also refuses to approve
 twice at the same head commit.
