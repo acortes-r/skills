@@ -97,6 +97,32 @@ run "$main" "bad..name" bad
 check "invalid branch exits non-zero" '[ "$rc" -ne 0 ]'
 check "invalid branch never calls herdr" '[ ! -e "$log" ]'
 
+# 9. Explicit base on the remote: branches off origin/<base>, not origin/HEAD.
+setup
+git -C "$sandbox/seed" push -q origin main:refs/heads/develop
+run "$main" feat/off-develop off-develop develop
+check "explicit base exits 0" '[ "$rc" -eq 0 ]'
+check "explicit base is used" 'grep -q -- "--base origin/develop" "$log"'
+
+# 10. Base only exists locally (stacking on unpushed work): branches off the local ref.
+setup
+git -C "$main" branch feat/parent
+run "$main" feat/child child feat/parent
+check "local-only base is used" 'grep -q -- "--base feat/parent " "$log"'
+
+# 11. Base that exists nowhere: refuses before calling herdr.
+setup
+run "$main" feat/orphan orphan no-such-base
+check "missing base exits non-zero" '[ "$rc" -ne 0 ]'
+check "missing base never calls herdr" '[ ! -e "$log" ]'
+
+# 12. --bases: the default first, then the long-lived branches the remote has.
+setup
+git -C "$sandbox/seed" push -q origin main:refs/heads/develop main:refs/heads/feat/noise
+(cd "$main" && "$script" --bases) >"$sandbox/out" 2>&1; rc=$?
+check "--bases exits 0" '[ "$rc" -eq 0 ]'
+check "--bases lists default then develop only" '[ "$(tr "\n" " " < "$sandbox/out")" = "main develop " ]'
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

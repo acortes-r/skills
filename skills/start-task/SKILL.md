@@ -9,6 +9,7 @@ metadata:
   branch_from_issue: Linear gitBranchName, verbatim
   branch_without_issue: <type>/<slug>
   worktree_path: <main clone>/.worktrees/<branch>
+  base_branch: proposed from origin/HEAD, confirmed by the user
 ---
 
 # Start task
@@ -39,29 +40,46 @@ description of the task.
    what. Example: `fix/rapidoochoa-discount-null`.
 3. Label: the slug.
 
-Show the proposed branch and label, and wait for the user's confirmation before step 2.
-
-## 2. Create the workspace
+## 2. Choose the base branch
 
 Run the script in this skill's directory, from anywhere inside the repository:
 
 ```bash
-scripts/start-worktree.sh <branch> <label>
+scripts/start-worktree.sh --bases
 ```
 
-The script finds the main clone (also when called from a linked worktree), takes the
-base branch from `origin/HEAD`, fetches it, adds `.worktrees/` to
-`.git/info/exclude`, and then:
+It fetches and prints the base candidates, one per line: the repository default
+(`origin/HEAD`) first, then the long-lived branches the remote has (`main`, `master`,
+`develop`, …). Propose the first line as the base and list the rest as alternatives.
+The user can also name any other branch, such as a parent branch to stack on.
 
-- creates the worktree at `<main clone>/.worktrees/<branch>` from `origin/<base>`;
-- reopens the branch instead when it already exists, locally or on the remote.
+When the user already named a base in the request, use it and skip the proposal.
+
+## 3. Confirm
+
+Show the proposed branch, label, and base together, and wait for the user's
+confirmation. A correction to any of the three is applied and shown again.
+
+## 4. Create the workspace
+
+```bash
+scripts/start-worktree.sh <branch> <label> <base>
+```
+
+The script finds the main clone (also when called from a linked worktree), fetches
+the base, adds `.worktrees/` to `.git/info/exclude`, and then:
+
+- creates the worktree at `<main clone>/.worktrees/<branch>` from `origin/<base>`,
+  or from the local `<base>` when it exists only locally;
+- reopens the branch instead when it already exists, locally or on the remote; the
+  base does not apply then, and the report says the branch was reopened.
 
 Herdr opens it as a workspace linked to the main clone and leaves the focus where it was.
 
 When Herdr answers with a repository-trust error, show it to the user and ask before
 retrying with `--trust-repository`.
 
-## 3. Report
+## 5. Report
 
 Read the JSON response and give the user:
 

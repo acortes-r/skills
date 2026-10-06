@@ -4,12 +4,13 @@
     {
       "id": 1,
       "prompt": "/start-task INT3-150. The Linear issue is titled 'Reserve default type' and its gitBranchName is int3-150-reserve-default-type. The agent runs inside Herdr in a repo whose origin/HEAD is master.",
-      "expected_output": "The branch int3-150-reserve-default-type is proposed with label INT3-150, and after confirmation the workspace is created from origin/master.",
+      "expected_output": "The branch int3-150-reserve-default-type is proposed with label INT3-150 and base master, and after confirmation the workspace is created from origin/master.",
       "expectations": [
         "Reads the issue through the Linear connector before proposing a name.",
         "Uses gitBranchName verbatim, without adding a type prefix.",
         "Uses the issue ID as the workspace label.",
-        "Waits for the user's confirmation before running the script.",
+        "Runs --bases and proposes master, the first line, as the base.",
+        "Waits for the user's confirmation of branch, label, and base before creating anything.",
         "Reports branch, base, absolute worktree path, and workspace ID."
       ]
     },
@@ -73,6 +74,26 @@
         "Chooses refactor for restructuring code without changing behavior.",
         "Creates only the workspace.",
         "Leaves the shell at the prompt and points out the user can start an agent there."
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "/start-task INT3-152 from develop. The repo's origin/HEAD is main and the remote also has develop.",
+      "expected_output": "develop is used as the base without proposing main; the workspace branches off origin/develop.",
+      "expectations": [
+        "Takes the base named in the request.",
+        "Skips the base proposal but still confirms branch, label, and base together.",
+        "Passes develop as the third script argument."
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "/start-task feat: add travel assistance to rochoa checkout. When shown the base candidates (main, develop), the user answers: base it on feat/rochoa-travel-assistance, which I have not pushed yet.",
+      "expected_output": "The new branch stacks on the local feat/rochoa-travel-assistance; the script accepts a local-only base.",
+      "expectations": [
+        "Accepts a base outside the listed candidates.",
+        "Shows the corrected proposal again before creating anything.",
+        "Does not push the parent branch to make it a remote base."
       ]
     }
   ]
