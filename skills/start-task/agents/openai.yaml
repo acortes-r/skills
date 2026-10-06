@@ -1,0 +1,22 @@
+interface:
+  display_name: "Start Task"
+  short_description: "Opens a git worktree and branch for a new task as a Herdr workspace, named from the Linear issue or the task description"
+  default_prompt: "Use start-task for this task. Propose the branch name and wait for my confirmation."
+
+policy:
+  allow_implicit_invocation: false
+  read_only_repository: false
+  write_scopes:
+    - git_branch_create
+    - git_worktree_create
+    - git_info_exclude
+    - herdr_workspace_create
+  gated_actions:
+    # Only after the user confirms the proposed branch name.
+    - git_worktree_create
+    # Only after the user approves it for this repository.
+    - herdr_trust_repository
+  forbidden_actions:
+    - git_push
+    - pull_request_create
+    - worktree_remove
