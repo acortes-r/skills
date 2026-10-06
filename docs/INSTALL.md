@@ -4,6 +4,8 @@
 - Any host, via the CLI
 - Manual install per host
 - Optional Claude Code overrides
+  - review-changes
+  - start-task
 - Verifying an install
 
 ## Any host, via the CLI
@@ -35,7 +37,13 @@ The directory name becomes the command the user types, so keep it.
 ## Optional Claude Code overrides
 
 `SKILL.md` stays within the six spec fields for portability, which leaves out
-some Claude Code features. Add them to a personal copy when you want them:
+some Claude Code features. Add them to a personal copy when you want them.
+
+Do not add these fields to the repository copy: `claude.ai` uploads, the Skills
+API, and `package_skill.py` reject unknown keys with
+`Unexpected key(s) in SKILL.md frontmatter`.
+
+### review-changes
 
 ```yaml
 context: fork          # run the review in an isolated subagent context
@@ -58,9 +66,15 @@ allowed-tools: Read, Grep, Glob, Bash(git *), Bash(gh pr view *), Bash(gh pr dif
 Leave `gh api repos/.../reviews` out of the allowlist on purpose. The permission
 prompt then acts as the confirmation gate before anything reaches a pull request.
 
-Do not add these fields to the repository copy: `claude.ai` uploads, the Skills
-API, and `package_skill.py` reject unknown keys with
-`Unexpected key(s) in SKILL.md frontmatter`.
+### start-task
+
+```yaml
+disable-model-invocation: true
+```
+
+The skill then fires only when you type `/start-task`. Its description stops
+costing context in every session, and an agent never opens a worktree because a
+conversation mentioned a new task.
 
 ## Verifying an install
 
@@ -83,4 +97,7 @@ python3 -m py_compile skills/review-changes/scripts/post_review.py && echo "publ
 
 # publisher behaves: 12 tests, gh stubbed, no network
 python3 skills/review-changes/tests/test_post_review.py
+
+# start-task script behaves: 25 checks, herdr stubbed, no network
+bash skills/start-task/tests/test_start_worktree.sh
 ```

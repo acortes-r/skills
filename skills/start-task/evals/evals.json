@@ -1,0 +1,100 @@
+{
+  "skill_name": "start-task",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/start-task INT3-150. The Linear issue is titled 'Reserve default type' and its gitBranchName is int3-150-reserve-default-type. The agent runs inside Herdr in a repo whose origin/HEAD is master.",
+      "expected_output": "The branch int3-150-reserve-default-type is proposed with label INT3-150 and base master, and after confirmation the workspace is created from origin/master.",
+      "expectations": [
+        "Reads the issue through the Linear connector before proposing a name.",
+        "Uses gitBranchName verbatim, without adding a type prefix.",
+        "Uses the issue ID as the workspace label.",
+        "Runs --bases and proposes master, the first line, as the base.",
+        "Waits for the user's confirmation of branch, label, and base before creating anything.",
+        "Reports branch, base, absolute worktree path, and workspace ID."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "/start-task fix: the rapidoochoa provider returns a null commercial discount and the price breaks",
+      "expected_output": "A fix/<slug> branch with a short English slug naming the defect, for example fix/rapidoochoa-discount-null.",
+      "expectations": [
+        "Infers the type fix from the description.",
+        "Writes the slug in English kebab-case, 3 to 6 words.",
+        "Uses the slug as the label.",
+        "Shows the proposal and waits before creating anything."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "/start-task INT3-151 in a session where no Linear tools exist. The user says the title is 'Actualización de contraseña del pasajero frecuente'.",
+      "expected_output": "The branch is built the way Linear builds it, without accents: int3-151-actualizacion-de-contrasena-del-pasajero-frecuente.",
+      "expectations": [
+        "Notices the Linear connector is missing and says so.",
+        "Builds the name from the lowercase ID plus the kebab-case title.",
+        "Strips accents and keeps the name within about 60 characters.",
+        "Does not ask the user to re-authenticate Linear."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "/start-task add a retry to the CDS client. HERDR_ENV is not set in this session.",
+      "expected_output": "The skill stops and says it is not running inside Herdr. No branch or worktree is created.",
+      "expectations": [
+        "Stops when the script refuses to run outside Herdr.",
+        "Does not fall back to plain git worktree add.",
+        "Does not drive the user's Herdr session from outside it."
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "/start-task INT3-144. The branch int3-144-reserve-default-type already exists on origin from a teammate.",
+      "expected_output": "The existing remote branch is checked out as a tracking branch and opened, not recreated from the base.",
+      "expectations": [
+        "Runs the same script; the script picks the reopen path.",
+        "Reports that the branch already existed and was reopened.",
+        "Does not create a second branch with a different name."
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "/start-task chore: bump eslint. Herdr answers the worktree command with a repository-trust error.",
+      "expected_output": "The error is shown and the user is asked before any retry with --trust-repository.",
+      "expectations": [
+        "Shows Herdr's error text.",
+        "Asks before passing --trust-repository.",
+        "Does not retry with --trust-repository on its own."
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "/start-task refactor the soap client. Should it be refactor or chore? The user also asks to start Claude in the new workspace.",
+      "expected_output": "The type is refactor. The workspace is created and the agent explains that starting an agent is outside this skill.",
+      "expectations": [
+        "Chooses refactor for restructuring code without changing behavior.",
+        "Creates only the workspace.",
+        "Leaves the shell at the prompt and points out the user can start an agent there."
+      ]
+    },
+    {
+      "id": 8,
+      "prompt": "/start-task INT3-152 from develop. The repo's origin/HEAD is main and the remote also has develop.",
+      "expected_output": "develop is used as the base without proposing main; the workspace branches off origin/develop.",
+      "expectations": [
+        "Takes the base named in the request.",
+        "Skips the base proposal but still confirms branch, label, and base together.",
+        "Passes develop as the third script argument."
+      ]
+    },
+    {
+      "id": 9,
+      "prompt": "/start-task feat: add travel assistance to rochoa checkout. When shown the base candidates (main, develop), the user answers: base it on feat/rochoa-travel-assistance, which I have not pushed yet.",
+      "expected_output": "The new branch stacks on the local feat/rochoa-travel-assistance; the script accepts a local-only base.",
+      "expectations": [
+        "Accepts a base outside the listed candidates.",
+        "Shows the corrected proposal again before creating anything.",
+        "Does not push the parent branch to make it a remote base."
+      ]
+    }
+  ]
+}
