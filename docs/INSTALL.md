@@ -98,6 +98,7 @@ python3 -m py_compile skills/review-changes/scripts/post_review.py && echo "publ
 # publisher behaves: 12 tests, gh stubbed, no network
 python3 skills/review-changes/tests/test_post_review.py
 
-# start-task script behaves: 25 checks, herdr stubbed, no network
+# start-task scripts behave: 25 + 15 checks, herdr stubbed, no network
 bash skills/start-task/tests/test_start_worktree.sh
+bash skills/start-task/tests/test_start_agent.sh
 ```

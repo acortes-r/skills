@@ -1,7 +1,7 @@
 interface:
   display_name: "Start Task"
-  short_description: "Opens a git worktree and branch for a new task as a Herdr workspace, named from the Linear issue or the task description"
-  default_prompt: "Use start-task for this task. Propose the branch name and wait for my confirmation."
+  short_description: "Opens a git worktree and branch for a new task as a Herdr workspace and hands the task context to a Claude agent there"
+  default_prompt: "Use start-task for this task. Propose the branch name and base, wait for my confirmation, then hand the context to an agent in the new workspace."
 
 policy:
   allow_implicit_invocation: false
@@ -11,6 +11,8 @@ policy:
     - git_worktree_create
     - git_info_exclude
     - herdr_workspace_create
+    - herdr_agent_start
+    - herdr_agent_prompt
   gated_actions:
     # Only after the user confirms the proposed branch name.
     - git_worktree_create

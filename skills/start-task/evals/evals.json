@@ -68,12 +68,13 @@
     },
     {
       "id": 7,
-      "prompt": "/start-task refactor the soap client. Should it be refactor or chore? The user also asks to start Claude in the new workspace.",
-      "expected_output": "The type is refactor. The workspace is created and the agent explains that starting an agent is outside this skill.",
+      "prompt": "/start-task refactor the soap client. Should it be refactor or chore? Analyze the client first; I will send more context later.",
+      "expected_output": "The type is refactor. After the workspace is created, a Claude agent there receives a brief with the request verbatim, including that more context will follow.",
       "expectations": [
         "Chooses refactor for restructuring code without changing behavior.",
-        "Creates only the workspace.",
-        "Leaves the shell at the prompt and points out the user can start an agent there."
+        "Writes the brief with the user's request verbatim, including the promise of more context.",
+        "Runs start-agent.sh with the new workspace ID and the label.",
+        "Reports the agent name and what the brief asked it to do."
       ]
     },
     {
@@ -94,6 +95,27 @@
         "Accepts a base outside the listed candidates.",
         "Shows the corrected proposal again before creating anything.",
         "Does not push the parent branch to make it a remote base."
+      ]
+    },
+    {
+      "id": 10,
+      "prompt": "/start-task MER-63. The issue was worked before: a closed PR, comments with a provider analysis, and a provider answer that unblocked it. Analyze the issue for context.",
+      "expected_output": "The brief carries the issue summary, the closed PR and its branch, the provider's answer, and this session's conclusions, so the new agent does not have to rediscover them.",
+      "expectations": [
+        "Includes the closed PR number, its branch, and why it was closed.",
+        "Includes the provider's answer in short.",
+        "States this session's reading of what the answer implies.",
+        "Writes the brief outside the repository."
+      ]
+    },
+    {
+      "id": 11,
+      "prompt": "/start-task fix: retry on CDS timeouts. The new workspace's first pane already runs Codex, working on something else.",
+      "expected_output": "start-agent.sh refuses because the pane is busy; the skill reports it and sends nothing.",
+      "expectations": [
+        "Does not start a second agent in another pane on its own.",
+        "Does not prompt the busy agent.",
+        "Reports the workspace path so the user can act."
       ]
     }
   ]
