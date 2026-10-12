@@ -117,6 +117,26 @@
         "Does not prompt the busy agent.",
         "Reports the workspace path so the user can act."
       ]
+    },
+    {
+      "id": 12,
+      "prompt": "/start-task INT3-160 con codex. START_TASK_AGENT is not set.",
+      "expected_output": "The confirmation shows codex as the agent, and the script is called with codex as the kind.",
+      "expectations": [
+        "Shows the agent next to the branch, label, and base, and waits for confirmation.",
+        "Passes codex as the fourth argument to start-agent.sh.",
+        "Reports the agent kind and name."
+      ]
+    },
+    {
+      "id": 13,
+      "prompt": "/start-task fix: retry on CDS timeouts. START_TASK_AGENT=cursor in this shell.",
+      "expected_output": "With no agent named in the request, the confirmation proposes cursor from START_TASK_AGENT.",
+      "expectations": [
+        "Reads START_TASK_AGENT before the confirmation.",
+        "Proposes cursor as the agent.",
+        "Accepts a correction to another kind and shows the four values again."
+      ]
     }
   ]
 }

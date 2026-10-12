@@ -1,7 +1,7 @@
 interface:
   display_name: "Start Task"
-  short_description: "Opens a git worktree and branch for a new task as a Herdr workspace and hands the task context to a Claude agent there"
-  default_prompt: "Use start-task for this task. Propose the branch name and base, wait for my confirmation, then hand the context to an agent in the new workspace."
+  short_description: "Opens a git worktree and branch for a new task as a Herdr workspace and hands the task context to a coding agent there (Claude by default, or Codex, Cursor, …)"
+  default_prompt: "Use start-task for this task. Propose the branch name, base, and agent, wait for my confirmation, then hand the context to an agent in the new workspace."
 
 policy:
   allow_implicit_invocation: false

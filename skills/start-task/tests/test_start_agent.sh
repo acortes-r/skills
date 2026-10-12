@@ -4,6 +4,7 @@
 set -uo pipefail
 
 script="$(cd "$(dirname "$0")/.." && pwd -P)/scripts/start-agent.sh"
+unset START_TASK_AGENT  # tests set it explicitly; a value from the shell would skew them
 pass=0
 fail=0
 
@@ -75,7 +76,7 @@ run w9 MER-63 "$sandbox/brief.md"
 check "busy pane exits non-zero" '[ "$rc" -ne 0 ]'
 check "busy pane gets no prompt" '! grep -q "^agent prompt" "$log" && ! grep -q "^agent start" "$log"'
 
-# 6. Pane running another agent kind: refuses.
+# 6. Pane running another agent kind than the default claude: refuses.
 setup '{"pane_id":"w9:p1","agent":"codex","agent_status":"idle"}'
 run w9 MER-63 "$sandbox/brief.md"
 check "other agent kind exits non-zero" '[ "$rc" -ne 0 ] && ! grep -q "^agent prompt" "$log"'
@@ -91,7 +92,38 @@ setup "$shell_pane"
 (cd "$sandbox" && PATH="$sandbox/bin:$PATH" HERDR_ENV=1 "$script" w9 MER-63 brief.md) >"$sandbox/out" 2>&1; rc=$?
 check "relative brief path is made absolute" '[ "$rc" -eq 0 ] && grep -qF "Read the task brief in $sandbox/brief.md" "$log"'
 
-# 9. Outside Herdr: refuses before calling herdr.
+# 9. Kind as an argument: starts that agent.
+setup "$shell_pane"
+run w9 MER-63 "$sandbox/brief.md" codex
+check "codex kind exits 0" '[ "$rc" -eq 0 ]'
+check "codex kind starts codex" 'grep -q "^agent start mer-63 --kind codex --pane w9:p1 --timeout 60000 -- Read the task brief" "$log"'
+
+# 10. Kind from START_TASK_AGENT when no argument names one.
+setup "$shell_pane"
+PATH="$sandbox/bin:$PATH" HERDR_ENV=1 START_TASK_AGENT=cursor "$script" w9 MER-63 "$sandbox/brief.md" >"$sandbox/out" 2>&1; rc=$?
+check "START_TASK_AGENT sets the kind" '[ "$rc" -eq 0 ] && grep -q "^agent start mer-63 --kind cursor " "$log"'
+
+# 11. The argument wins over START_TASK_AGENT.
+setup "$shell_pane"
+PATH="$sandbox/bin:$PATH" HERDR_ENV=1 START_TASK_AGENT=cursor "$script" w9 MER-63 "$sandbox/brief.md" codex >"$sandbox/out" 2>&1; rc=$?
+check "argument overrides START_TASK_AGENT" 'grep -q "^agent start mer-63 --kind codex " "$log"'
+
+# 12. Idle agent of the asked kind: reused.
+setup '{"pane_id":"w9:p1","agent":"codex","agent_status":"idle"}'
+run w9 MER-63 "$sandbox/brief.md" codex
+check "idle codex is reused for codex" '[ "$rc" -eq 0 ] && ! grep -q "^agent start" "$log" && grep -q "^agent prompt mer-63 Read the task brief" "$log"'
+
+# 13. Idle agent of another kind: refuses.
+setup "$idle_claude"
+run w9 MER-63 "$sandbox/brief.md" codex
+check "idle claude refused when codex is asked" '[ "$rc" -ne 0 ] && ! grep -q "^agent prompt" "$log"'
+
+# 14. Malformed kind: refuses before calling herdr.
+setup "$shell_pane"
+run w9 MER-63 "$sandbox/brief.md" "Codex; rm"
+check "malformed kind exits non-zero" '[ "$rc" -ne 0 ] && [ ! -e "$log" ]'
+
+# 15. Outside Herdr: refuses before calling herdr.
 setup "$shell_pane"
 PATH="$sandbox/bin:$PATH" HERDR_ENV= "$script" w9 MER-63 "$sandbox/brief.md" >"$sandbox/out" 2>&1; rc=$?
 check "outside Herdr exits non-zero" '[ "$rc" -ne 0 ] && [ ! -e "$log" ]'

@@ -1,8 +1,8 @@
 ---
 name: start-task
-description: Use when the user wants to start a new task — a Linear issue, feature, fix, or chore — in its own git worktree and branch opened as a Herdr workspace, with a Claude agent there that receives the task context. Names the branch from the Linear issue or the task description. Requires running inside Herdr.
+description: Use when the user wants to start a new task — a Linear issue, feature, fix, or chore — in its own git worktree and branch opened as a Herdr workspace, with a coding agent there (Claude by default, or Codex, Cursor, or another the user names) that receives the task context. Names the branch from the Linear issue or the task description. Requires running inside Herdr.
 license: MIT
-compatibility: Requires git and Herdr 0.9+, with the agent running inside a Herdr pane (HERDR_ENV=1). Reading Linear issues requires a Linear MCP connector; without one the branch name is derived from the issue ID and title the user gives.
+compatibility: Requires git, Herdr 0.9+, and the chosen agent's CLI on PATH, with the agent running inside a Herdr pane (HERDR_ENV=1). Reading Linear issues requires a Linear MCP connector; without one the branch name is derived from the issue ID and title the user gives.
 allowed-tools: Read, Bash
 metadata:
   version: 0.3.0
@@ -11,13 +11,13 @@ metadata:
   worktree_path: <main clone>/.worktrees/<branch>
   base_branch: proposed from origin/HEAD, confirmed by the user
   brief: <worktree>/.task-brief.md, kept out of git through info/exclude
-  agent: claude, in the workspace's first pane, prompted to read the brief
+  agent: the kind the user names, else $START_TASK_AGENT, else claude; in the workspace's first pane, prompted to read the brief
 ---
 
 # Start task
 
 Turn the context of a task into a well-named branch, a Herdr workspace hanging off
-the main clone of the current repository, and a Claude agent in that workspace that
+the main clone of the current repository, and a coding agent in that workspace that
 already holds the task context. The run is done when that agent has started working
 on the brief; the task itself continues in that session, not this one.
 
@@ -58,12 +58,21 @@ The user can also name any other branch, such as a parent branch to stack on.
 
 When the user already named a base in the request, use it and skip the proposal.
 
-## 3. Confirm
+## 3. Choose the agent
 
-Show the proposed branch, label, and base together, and wait for the user's
-confirmation. A correction to any of the three is applied and shown again.
+The agent is a Herdr agent kind: `claude`, `codex`, `cursor`, … (`herdr agent` lists
+them all). Take the first that applies:
 
-## 4. Create the workspace
+1. The kind the user named in the request (`con codex`, `with cursor`).
+2. The value of `$START_TASK_AGENT`.
+3. `claude`.
+
+## 4. Confirm
+
+Show the proposed branch, label, base, and agent together, and wait for the user's
+confirmation. A correction to any of the four is applied and shown again.
+
+## 5. Create the workspace
 
 ```bash
 scripts/start-worktree.sh <branch> <label> <base>
@@ -78,12 +87,12 @@ the base, adds `.worktrees/` to `.git/info/exclude`, and then:
   base does not apply then, and the report says the branch was reopened.
 
 Herdr opens it as a workspace linked to the main clone and leaves the focus where it was.
-Keep the workspace ID from the response (`.result.workspace.workspace_id`) for step 5.
+Keep the workspace ID from the response (`.result.workspace.workspace_id`) for step 6.
 
 When Herdr answers with a repository-trust error, show it to the user and ask before
 retrying with `--trust-repository`.
 
-## 5. Hand the task to an agent
+## 6. Hand the task to the agent
 
 Write a **brief** to `<worktree>/.task-brief.md`; `info/exclude` keeps it out of git.
 The agent in the new workspace starts with nothing but this file and the repository,
@@ -99,11 +108,11 @@ so the brief carries everything this session learned:
 Then run:
 
 ```bash
-scripts/start-agent.sh <workspace-id> <label> <worktree>/.task-brief.md
+scripts/start-agent.sh <workspace-id> <label> <worktree>/.task-brief.md <kind>
 ```
 
-The script takes the workspace's first pane. It reuses an idle Claude already in that
-pane, or starts one in the shell, names it after the label, and gives it a one-line
+The script takes the workspace's first pane. It reuses an idle agent of that kind already
+in the pane, or starts one in the shell, names it after the label, and gives it a one-line
 prompt to read the brief. It returns once the agent takes the prompt up, without
 waiting for the turn to end, and prints the agent with its `agent_status`:
 
@@ -111,13 +120,14 @@ waiting for the turn to end, and prints the agent with its `agent_status`:
 - `blocked`: a trust or permission dialog is waiting. The prompt is already queued;
   report it and leave the answer to the user in that workspace.
 
-When the script refuses because the pane is busy, report it the same way.
+When the script refuses because the pane is busy or runs another kind of agent,
+report it the same way.
 
-## 6. Report
+## 7. Report
 
 Give the user:
 
 - branch and base;
 - absolute path of the worktree;
-- Herdr workspace ID and agent name;
+- Herdr workspace ID, agent kind, and agent name;
 - one line on what the brief asked the agent to do.

@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
-# Put a Claude agent in a workspace's first pane and point it at a task brief.
-# Usage: start-agent.sh <workspace-id> <agent-name> <brief-file>
-# Reuses an idle Claude already in that pane; otherwise starts one in the shell.
+# Put a coding agent in a workspace's first pane and point it at a task brief.
+# Usage: start-agent.sh <workspace-id> <agent-name> <brief-file> [kind]
+# kind is a Herdr agent kind (claude, codex, cursor, …): the argument, else
+# $START_TASK_AGENT, else claude.
+# Reuses an idle agent of that kind already in the pane; otherwise starts one in the shell.
 # The agent gets a one-line prompt naming the brief file, never the brief itself.
 # Prints the Herdr JSON for the agent; its agent_status says how the start went.
 set -euo pipefail
 
-usage="usage: start-agent.sh <workspace-id> <agent-name> <brief-file>"
+usage="usage: start-agent.sh <workspace-id> <agent-name> <brief-file> [kind]"
 workspace="${1:?$usage}"
 wanted="${2:?$usage}"
 brief="${3:?$usage}"
+kind="${4:-${START_TASK_AGENT:-claude}}"
 
 [ "${HERDR_ENV:-}" = 1 ] || { echo "error: not running inside a Herdr pane" >&2; exit 1; }
+[[ "$kind" =~ ^[a-z][a-z0-9_-]*$ ]] || { echo "error: invalid agent kind: $kind" >&2; exit 1; }
 [ -s "$brief" ] || { echo "error: brief file missing or empty: $brief" >&2; exit 1; }
 brief="$(cd "$(dirname "$brief")" && pwd -P)/$(basename "$brief")"
 prompt="Read the task brief in $brief and start on it."
@@ -49,10 +53,10 @@ until_started=(--until working --until blocked --timeout 30000)
 
 if [ "$agent" = "-" ]; then
   # The prompt rides on the command line, so nothing is typed into a dialog.
-  herdr agent start "$name" --kind claude --pane "$pane" --timeout 60000 -- "$prompt" >/dev/null
+  herdr agent start "$name" --kind "$kind" --pane "$pane" --timeout 60000 -- "$prompt" >/dev/null
   # A fresh agent can only reach done by finishing the brief's turn.
   herdr agent wait "$name" "${until_started[@]}" --until done >/dev/null || true
-elif [ "$agent" = claude ] && { [ "$status" = idle ] || [ "$status" = done ]; }; then
+elif [ "$agent" = "$kind" ] && { [ "$status" = idle ] || [ "$status" = done ]; }; then
   [ "$current" = "$name" ] || herdr agent rename "$pane" "$name" >/dev/null
   herdr agent prompt "$name" "$prompt" --wait "${until_started[@]}" >/dev/null || true
 else
