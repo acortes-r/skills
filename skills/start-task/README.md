@@ -55,7 +55,8 @@ confirm them.
 
 ## The agent and its brief
 
-Before handing off, the skill writes a brief to a temporary file:
+Before handing off, the skill writes a brief to `<worktree>/.task-brief.md`, which
+`.git/info/exclude` keeps out of `git status`:
 
 1. Your request, verbatim: what you asked for, and anything you said you would
    send later.
@@ -64,18 +65,21 @@ Before handing off, the skill writes a brief to a temporary file:
 3. Worktree path, branch, and base.
 
 `scripts/start-agent.sh <workspace-id> <label> <brief-file>` then puts Claude in
-the workspace's first pane and sends the brief as its first prompt:
+the workspace's first pane with a one-line prompt: `Read the task brief in <path>
+and start on it.` The brief stays a file, so its line breaks never reach the
+terminal, and the agent can reread it later:
 
 | First pane | Action |
 |---|---|
-| shell at the prompt | `herdr agent start <name> --kind claude` |
-| idle Claude | renamed to `<name>` and reused, never a second one |
+| shell at the prompt | `herdr agent start <name> --kind claude -- "<prompt>"`: the prompt rides on the command line |
+| idle Claude | renamed to `<name>` and reused, never a second one, then prompted |
 | busy agent, or another agent kind | refuses; nothing is sent |
 
 The agent is named after the label, normalized to Herdr's rules (`MER-63` →
 `mer-63`), with `-2`, `-3`, … on a clash. The script returns as soon as the agent
-starts working; it does not wait for the turn to end. If Claude stops on a trust
-or permission dialog, the skill reports it and leaves the answer to you.
+is `working`, `done`, or `blocked`; it does not wait for the turn to end. If Claude
+stops on a trust or permission dialog, the prompt waits behind it: the skill
+reports it and leaves the answer to you.
 
 ## What the worktree script does
 
@@ -87,8 +91,9 @@ vary between runs:
 2. Finds the main clone, also when called from inside a linked worktree.
 3. Fetches the base: `origin/<base>` when the remote has it, the local branch
    otherwise. With no base given, it uses `origin/HEAD`.
-4. Adds `.worktrees/` to `.git/info/exclude`, so worktrees never show up in
-   `git status` and the tracked `.gitignore` stays untouched.
+4. Adds `.worktrees/` and `/.task-brief.md` to `.git/info/exclude`, so worktrees
+   and their briefs never show up in `git status` and the tracked `.gitignore`
+   stays untouched.
 5. Opens the workspace:
 
 | Branch state | Action |
@@ -117,11 +122,12 @@ bash skills/start-task/tests/test_start_agent.sh
 Both stub `herdr`, so no real session or network is touched.
 
 `test_start_worktree.sh` builds throwaway repositories. They cover the four branch states, calling from a linked
-worktree, the exclude line written once, the dropped upstream, an explicit,
+worktree, the exclude lines written once, the dropped upstream, an explicit,
 local-only, and missing base, the `--bases` listing, and the refusals.
 
-`test_start_agent.sh` covers starting in a shell, reusing an idle Claude, name
-normalization and clashes, and refusing a busy pane, another agent kind, an empty
+`test_start_agent.sh` covers starting in a shell with the prompt on the command
+line, reusing an idle Claude, the brief sent as an absolute path and never as
+text, name normalization and clashes, and refusing a busy pane, another agent kind, an empty
 brief, or a run outside Herdr.
 
 `evals/evals.json` describes what the agent should do around the script. The
@@ -133,9 +139,9 @@ repository has no eval runner, so the evals are read, not executed.
 start-task/
 ├── SKILL.md                      # naming rules, base choice, and the run
 ├── scripts/start-worktree.sh     # deterministic worktree + workspace creation
-├── scripts/start-agent.sh        # Claude in the workspace, prompted with the brief
-├── tests/test_start_worktree.sh  # 25 checks, herdr stubbed
-├── tests/test_start_agent.sh     # 15 checks, herdr stubbed
+├── scripts/start-agent.sh        # Claude in the workspace, pointed at the brief
+├── tests/test_start_worktree.sh  # 27 checks, herdr stubbed
+├── tests/test_start_agent.sh     # 19 checks, herdr stubbed
 ├── evals/evals.json              # agent-level scenarios
 └── agents/openai.yaml            # host adapter
 ```

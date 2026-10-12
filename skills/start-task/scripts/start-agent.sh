@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Put a Claude agent in a workspace's first pane and hand it a task brief.
+# Put a Claude agent in a workspace's first pane and point it at a task brief.
 # Usage: start-agent.sh <workspace-id> <agent-name> <brief-file>
 # Reuses an idle Claude already in that pane; otherwise starts one in the shell.
-# Prints the Herdr JSON for the agent on success.
+# The agent gets a one-line prompt naming the brief file, never the brief itself.
+# Prints the Herdr JSON for the agent; its agent_status says how the start went.
 set -euo pipefail
 
 usage="usage: start-agent.sh <workspace-id> <agent-name> <brief-file>"
@@ -12,6 +13,8 @@ brief="${3:?$usage}"
 
 [ "${HERDR_ENV:-}" = 1 ] || { echo "error: not running inside a Herdr pane" >&2; exit 1; }
 [ -s "$brief" ] || { echo "error: brief file missing or empty: $brief" >&2; exit 1; }
+brief="$(cd "$(dirname "$brief")" && pwd -P)/$(basename "$brief")"
+prompt="Read the task brief in $brief and start on it."
 
 # Fields of the workspace's first pane: pane_id, agent kind, agent status, agent name.
 read -r pane agent status current <<<"$(herdr pane list --workspace "$workspace" | python3 -c '
@@ -40,15 +43,21 @@ while name in taken:
 print(name)
 ' "$wanted" "$current")"
 
+# Wait until the prompt is taken up, not for the whole turn; a trust or permission
+# dialog leaves it blocked. On a timeout the printed status still says where it stands.
+until_started=(--until working --until blocked --timeout 30000)
+
 if [ "$agent" = "-" ]; then
-  herdr agent start "$name" --kind claude --pane "$pane" --timeout 60000 >/dev/null
+  # The prompt rides on the command line, so nothing is typed into a dialog.
+  herdr agent start "$name" --kind claude --pane "$pane" --timeout 60000 -- "$prompt" >/dev/null
+  # A fresh agent can only reach done by finishing the brief's turn.
+  herdr agent wait "$name" "${until_started[@]}" --until done >/dev/null || true
 elif [ "$agent" = claude ] && { [ "$status" = idle ] || [ "$status" = done ]; }; then
   [ "$current" = "$name" ] || herdr agent rename "$pane" "$name" >/dev/null
+  herdr agent prompt "$name" "$prompt" --wait "${until_started[@]}" >/dev/null || true
 else
   echo "error: pane $pane is busy: $agent ($status)" >&2
   exit 1
 fi
 
-# Confirm the brief was taken up without waiting for the whole turn.
-herdr agent prompt "$name" "$(cat "$brief")" --wait --until working --until blocked --timeout 30000 >/dev/null
 herdr agent get "$name"

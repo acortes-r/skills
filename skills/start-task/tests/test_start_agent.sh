@@ -45,8 +45,10 @@ setup "$shell_pane"
 run w9 MER-63 "$sandbox/brief.md"
 check "shell pane exits 0" '[ "$rc" -eq 0 ]'
 check "shell pane starts claude in the first pane" 'grep -q "^agent start mer-63 --kind claude --pane w9:p1" "$log"'
-check "brief is sent as the prompt" 'grep -q "^agent prompt mer-63 Task brief" "$log"'
-check "prompt waits only until work starts" 'grep -q -- "--until working --until blocked --timeout" "$log"'
+check "start carries a one-line prompt naming the brief" 'grep -qF -- "-- Read the task brief in $sandbox/brief.md and start on it." "$log"'
+check "brief text itself is never sent" '! grep -q "Task brief" "$log"'
+check "start is not followed by a typed prompt" '! grep -q "^agent prompt" "$log"'
+check "start waits only until work starts" 'grep -q "^agent wait mer-63 --until working --until blocked --timeout 30000 --until done" "$log"'
 
 # 2. Idle Claude already there: renamed and reused, never a second start.
 setup "$idle_claude"
@@ -54,7 +56,8 @@ run w9 MER-63 "$sandbox/brief.md"
 check "idle claude exits 0" '[ "$rc" -eq 0 ]'
 check "idle claude is renamed" 'grep -q "^agent rename w9:p1 mer-63" "$log"'
 check "idle claude is not started again" '! grep -q "^agent start" "$log"'
-check "idle claude gets the brief" 'grep -q "^agent prompt mer-63" "$log"'
+check "idle claude is prompted with the brief path" 'grep -qF "agent prompt mer-63 Read the task brief in $sandbox/brief.md" "$log"'
+check "prompt waits until work starts, not on the old done" 'grep -q -- "--wait --until working --until blocked --timeout 30000$" "$log"'
 
 # 3. Name taken by another live agent: suffixed.
 setup "$shell_pane" '{"pane_id":"w2:p1","agent":"claude","name":"mer-63"}'
@@ -70,7 +73,7 @@ check "label normalized to a herdr name" 'grep -q "^agent start fix-rapido-disco
 setup '{"pane_id":"w9:p1","agent":"claude","agent_status":"working"}'
 run w9 MER-63 "$sandbox/brief.md"
 check "busy pane exits non-zero" '[ "$rc" -ne 0 ]'
-check "busy pane gets no prompt" '! grep -q "^agent prompt" "$log"'
+check "busy pane gets no prompt" '! grep -q "^agent prompt" "$log" && ! grep -q "^agent start" "$log"'
 
 # 6. Pane running another agent kind: refuses.
 setup '{"pane_id":"w9:p1","agent":"codex","agent_status":"idle"}'
@@ -83,7 +86,12 @@ setup "$shell_pane"
 run w9 MER-63 "$sandbox/brief.md"
 check "empty brief exits non-zero" '[ "$rc" -ne 0 ] && [ ! -e "$log" ]'
 
-# 8. Outside Herdr: refuses before calling herdr.
+# 8. Relative brief path: the prompt names it absolutely.
+setup "$shell_pane"
+(cd "$sandbox" && PATH="$sandbox/bin:$PATH" HERDR_ENV=1 "$script" w9 MER-63 brief.md) >"$sandbox/out" 2>&1; rc=$?
+check "relative brief path is made absolute" '[ "$rc" -eq 0 ] && grep -qF "Read the task brief in $sandbox/brief.md" "$log"'
+
+# 9. Outside Herdr: refuses before calling herdr.
 setup "$shell_pane"
 PATH="$sandbox/bin:$PATH" HERDR_ENV= "$script" w9 MER-63 "$sandbox/brief.md" >"$sandbox/out" 2>&1; rc=$?
 check "outside Herdr exits non-zero" '[ "$rc" -ne 0 ] && [ ! -e "$log" ]'

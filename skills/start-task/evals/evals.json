@@ -105,7 +105,7 @@
         "Includes the closed PR number, its branch, and why it was closed.",
         "Includes the provider's answer in short.",
         "States this session's reading of what the answer implies.",
-        "Writes the brief outside the repository."
+        "Writes the brief to <worktree>/.task-brief.md and passes that path to the script."
       ]
     },
     {

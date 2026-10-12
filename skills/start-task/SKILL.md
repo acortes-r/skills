@@ -5,12 +5,13 @@ license: MIT
 compatibility: Requires git and Herdr 0.9+, with the agent running inside a Herdr pane (HERDR_ENV=1). Reading Linear issues requires a Linear MCP connector; without one the branch name is derived from the issue ID and title the user gives.
 allowed-tools: Read, Bash
 metadata:
-  version: 0.2.0
+  version: 0.3.0
   branch_from_issue: Linear gitBranchName, verbatim
   branch_without_issue: <type>/<slug>
   worktree_path: <main clone>/.worktrees/<branch>
   base_branch: proposed from origin/HEAD, confirmed by the user
-  agent: claude, in the workspace's first pane, prompted with the task brief
+  brief: <worktree>/.task-brief.md, kept out of git through info/exclude
+  agent: claude, in the workspace's first pane, prompted to read the brief
 ---
 
 # Start task
@@ -84,9 +85,9 @@ retrying with `--trust-repository`.
 
 ## 5. Hand the task to an agent
 
-Write a **brief** to a temporary file, outside the repository. The agent in the new
-workspace starts with nothing but this file and the repository, so the brief carries
-everything this session learned:
+Write a **brief** to `<worktree>/.task-brief.md`; `info/exclude` keeps it out of git.
+The agent in the new workspace starts with nothing but this file and the repository,
+so the brief carries everything this session learned:
 
 1. The user's request, verbatim, including what they asked the agent to do and
    anything they said they will send later.
@@ -98,17 +99,19 @@ everything this session learned:
 Then run:
 
 ```bash
-scripts/start-agent.sh <workspace-id> <label> <brief-file>
+scripts/start-agent.sh <workspace-id> <label> <worktree>/.task-brief.md
 ```
 
 The script takes the workspace's first pane. It reuses an idle Claude already in that
-pane, or starts one in the shell, names it after the label, and sends the brief as
-the first prompt. It returns once the agent starts working, without waiting for the
-turn to end.
+pane, or starts one in the shell, names it after the label, and gives it a one-line
+prompt to read the brief. It returns once the agent takes the prompt up, without
+waiting for the turn to end, and prints the agent with its `agent_status`:
 
-When the script refuses because the pane is busy, or the agent comes back `blocked`
-(a trust or permission dialog), report it and leave the answer to the user in that
-workspace.
+- `working` or `done`: the agent is on the task.
+- `blocked`: a trust or permission dialog is waiting. The prompt is already queued;
+  report it and leave the answer to the user in that workspace.
+
+When the script refuses because the pane is busy, report it the same way.
 
 ## 6. Report
 
