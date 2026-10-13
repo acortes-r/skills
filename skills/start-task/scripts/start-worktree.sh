@@ -57,9 +57,12 @@ else
   exit 1
 fi
 
-# Keep .worktrees/ out of `git status` without touching the tracked .gitignore.
+# Keep .worktrees/ and each worktree's task brief out of `git status`
+# without touching the tracked .gitignore.
 exclude="$common_dir/info/exclude"
-grep -qxF '.worktrees/' "$exclude" 2>/dev/null || echo '.worktrees/' >> "$exclude"
+for pattern in '.worktrees/' '/.task-brief.md'; do
+  grep -qxF "$pattern" "$exclude" 2>/dev/null || echo "$pattern" >> "$exclude"
+done
 
 path="$main/.worktrees/$branch"
 

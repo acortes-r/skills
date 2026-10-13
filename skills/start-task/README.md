@@ -5,7 +5,8 @@ workspace. Give it a Linear issue or a short description of the work; it names t
 branch, asks which base to branch from, creates the worktree, and hands back the
 absolute path.
 
-Then it opens a Claude agent in that workspace and hands it a brief with
+Then it opens a coding agent in that workspace (Claude by default; Codex, Cursor,
+or any other Herdr agent kind on request) and hands it a brief with
 everything the session learned about the task, so the work continues there
 without retelling it.
 
@@ -22,6 +23,7 @@ npx skills add <your-github-user>/skills --skill start-task
 /start-task https://linear.app/acme/issue/INT3-150/reserve-default-type
 /start-task fix: rapidoochoa returns a null commercial discount
 /start-task INT3-152 from develop
+/start-task INT3-153 con codex
 ```
 
 ## Branch names
@@ -55,7 +57,17 @@ confirm them.
 
 ## The agent and its brief
 
-Before handing off, the skill writes a brief to a temporary file:
+The agent kind is the first of:
+
+1. the one named in the request (`con codex`, `with cursor`);
+2. `$START_TASK_AGENT`, for a standing preference (`export START_TASK_AGENT=codex`);
+3. `claude`.
+
+Any kind Herdr knows works: `herdr agent` lists them. It is shown with the branch,
+label, and base, and confirmed with them.
+
+Before handing off, the skill writes a brief to `<worktree>/.task-brief.md`, which
+`.git/info/exclude` keeps out of `git status`:
 
 1. Your request, verbatim: what you asked for, and anything you said you would
    send later.
@@ -63,19 +75,22 @@ Before handing off, the skill writes a brief to a temporary file:
    branches, and its own conclusions.
 3. Worktree path, branch, and base.
 
-`scripts/start-agent.sh <workspace-id> <label> <brief-file>` then puts Claude in
-the workspace's first pane and sends the brief as its first prompt:
+`scripts/start-agent.sh <workspace-id> <label> <brief-file> [kind]` then puts the
+agent in the workspace's first pane with a one-line prompt: `Read the task brief in <path>
+and start on it.` The brief stays a file, so its line breaks never reach the
+terminal, and the agent can reread it later:
 
 | First pane | Action |
 |---|---|
-| shell at the prompt | `herdr agent start <name> --kind claude` |
-| idle Claude | renamed to `<name>` and reused, never a second one |
+| shell at the prompt | `herdr agent start <name> --kind <kind> -- "<prompt>"`: the prompt rides on the command line |
+| idle agent of that kind | renamed to `<name>` and reused, never a second one, then prompted |
 | busy agent, or another agent kind | refuses; nothing is sent |
 
 The agent is named after the label, normalized to Herdr's rules (`MER-63` →
 `mer-63`), with `-2`, `-3`, … on a clash. The script returns as soon as the agent
-starts working; it does not wait for the turn to end. If Claude stops on a trust
-or permission dialog, the skill reports it and leaves the answer to you.
+is `working`, `done`, or `blocked`; it does not wait for the turn to end. If the
+agent stops on a trust or permission dialog, the prompt waits behind it: the skill
+reports it and leaves the answer to you.
 
 ## What the worktree script does
 
@@ -87,8 +102,9 @@ vary between runs:
 2. Finds the main clone, also when called from inside a linked worktree.
 3. Fetches the base: `origin/<base>` when the remote has it, the local branch
    otherwise. With no base given, it uses `origin/HEAD`.
-4. Adds `.worktrees/` to `.git/info/exclude`, so worktrees never show up in
-   `git status` and the tracked `.gitignore` stays untouched.
+4. Adds `.worktrees/` and `/.task-brief.md` to `.git/info/exclude`, so worktrees
+   and their briefs never show up in `git status` and the tracked `.gitignore`
+   stays untouched.
 5. Opens the workspace:
 
 | Branch state | Action |
@@ -117,11 +133,13 @@ bash skills/start-task/tests/test_start_agent.sh
 Both stub `herdr`, so no real session or network is touched.
 
 `test_start_worktree.sh` builds throwaway repositories. They cover the four branch states, calling from a linked
-worktree, the exclude line written once, the dropped upstream, an explicit,
+worktree, the exclude lines written once, the dropped upstream, an explicit,
 local-only, and missing base, the `--bases` listing, and the refusals.
 
-`test_start_agent.sh` covers starting in a shell, reusing an idle Claude, name
-normalization and clashes, and refusing a busy pane, another agent kind, an empty
+`test_start_agent.sh` covers starting in a shell with the prompt on the command
+line, reusing an idle agent of the asked kind, the kind from the argument,
+`$START_TASK_AGENT`, or the `claude` default, the brief sent as an absolute path and never as
+text, name normalization and clashes, and refusing a busy pane, another agent kind, a malformed kind, an empty
 brief, or a run outside Herdr.
 
 `evals/evals.json` describes what the agent should do around the script. The
@@ -133,9 +151,9 @@ repository has no eval runner, so the evals are read, not executed.
 start-task/
 ├── SKILL.md                      # naming rules, base choice, and the run
 ├── scripts/start-worktree.sh     # deterministic worktree + workspace creation
-├── scripts/start-agent.sh        # Claude in the workspace, prompted with the brief
-├── tests/test_start_worktree.sh  # 25 checks, herdr stubbed
-├── tests/test_start_agent.sh     # 15 checks, herdr stubbed
+├── scripts/start-agent.sh        # the agent in the workspace, pointed at the brief
+├── tests/test_start_worktree.sh  # 27 checks, herdr stubbed
+├── tests/test_start_agent.sh     # 26 checks, herdr stubbed
 ├── evals/evals.json              # agent-level scenarios
 └── agents/openai.yaml            # host adapter
 ```
@@ -144,7 +162,7 @@ start-task/
 
 - `git` 2.20+
 - `python3`, to read Herdr's JSON
-- Claude Code on `PATH`, for the agent
+- The agent's CLI on `PATH`: Claude Code by default, or Codex, Cursor, …
 - Herdr 0.9+, with the agent running inside a Herdr pane. The script calls the
   `herdr` CLI directly; the separate `herdr` skill is not needed.
 - A Linear MCP connector to read issues (optional; without it the name is built

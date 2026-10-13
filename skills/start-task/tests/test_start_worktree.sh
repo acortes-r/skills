@@ -54,10 +54,12 @@ check "new branch path under .worktrees" 'grep -q -- "--path $main/.worktrees/in
 check "new branch passes label and no-focus" 'grep -q -- "--label INT3-1 --no-focus" "$log"'
 check "new branch has no upstream" '! git -C "$main" rev-parse --abbrev-ref int3-1-new-thing@{upstream} >/dev/null 2>&1'
 check ".worktrees/ added to info/exclude" 'grep -qxF ".worktrees/" "$main/.git/info/exclude"'
+check "task brief added to info/exclude" 'grep -qxF "/.task-brief.md" "$main/.git/info/exclude"'
 
 # 2. Second run does not duplicate the exclude line.
 run "$main" int3-1-new-thing INT3-1
-check "exclude line written once" '[ "$(grep -cxF ".worktrees/" "$main/.git/info/exclude")" -eq 1 ]'
+check "exclude lines written once" '[ "$(grep -cxF ".worktrees/" "$main/.git/info/exclude")" -eq 1 ] && [ "$(grep -cxF "/.task-brief.md" "$main/.git/info/exclude")" -eq 1 ]'
+check "brief in a worktree stays out of git status" 'touch "$main/.worktrees/int3-1-new-thing/.task-brief.md" && [ -z "$(git -C "$main/.worktrees/int3-1-new-thing" status --porcelain)" ]'
 
 # 3. Called from inside a linked worktree: still roots in the main clone.
 setup
