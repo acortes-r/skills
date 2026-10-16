@@ -123,6 +123,26 @@ git -C "$sandbox/seed" push -q origin main:refs/heads/develop main:refs/heads/fe
 check "--bases exits 0" '[ "$rc" -eq 0 ]'
 check "--bases lists default then develop only" '[ "$(tr "\n" " " < "$sandbox/out")" = "main develop " ]'
 
+# 13. Called from a subdirectory of the main clone: still roots in the main clone.
+setup
+mkdir -p "$main/some/dir"
+run "$main/some/dir" fix/from-subdir from-subdir
+check "subdirectory resolves main clone" 'grep -q -- "--cwd $main --branch fix/from-subdir" "$log"'
+
+# 14. Git older than 2.31 (no `rev-parse --path-format`): the script never relies on it.
+setup
+real_git="$(command -v git)"
+cat > "$sandbox/bin/git" <<EOF
+#!/usr/bin/env bash
+for a in "\$@"; do case "\$a" in --path-format*) echo "\$a"; echo .git; exit 0;; esac; done
+exec "$real_git" "\$@"
+EOF
+chmod +x "$sandbox/bin/git"
+mkdir -p "$main/some/dir"
+run "$main/some/dir" fix/old-git old-git
+check "old git exits 0" '[ "$rc" -eq 0 ]'
+check "old git resolves main clone" 'grep -q -- "--cwd $main --branch fix/old-git" "$log"'
+
 echo
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]

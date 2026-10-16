@@ -8,8 +8,10 @@ set -euo pipefail
 
 usage="usage: start-worktree.sh --bases | start-worktree.sh <branch> <label> [base]"
 
-# Main clone, even when called from inside a linked worktree.
-common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+# Main clone, even when called from inside a linked worktree or a subdirectory.
+# A relative --git-common-dir is relative to the cwd; resolve it with cd instead of
+# --path-format=absolute, which Git < 2.31 echoes back instead of rejecting.
+common_dir="$(cd "$(git rev-parse --git-common-dir)" && pwd -P)"
 main="$(dirname "$common_dir")"
 
 default_base() {
