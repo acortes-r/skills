@@ -30,6 +30,7 @@ Or by command name in hosts that expose one: `/review-changes`.
 | **Adversarial verification** | A second pass tries to refute every candidate and can only confirm, adjust, or discard. It can never add a finding. |
 | **Never repeats itself** | On a re-review it finds its own earlier threads, reads what the author replied, and decides from that: fixed, does not apply, or still open. A comment it already made is never made again — not reworded, not at a new line after a rebase. |
 | **Deduped against other reviewers** | Collects existing inline threads, PR-level comments, and bot summaries — CodeRabbit, Codacy, Sonar, Copilot, humans — and drops findings already covered. Resolved threads stay closed. A finding dropped onto an **open** thread still counts as a problem: it withholds the approval instead of vanishing. |
+| **Every review is a round** | Each publish opens with `Ronda N` and lists, one line each, what it found, what was resolved since the last round, and what is still pending — so the author knows a review ran even when it adds no comment. Its own threads whose problem is gone get resolved in the same go. |
 | **Never blocks a merge** | `REQUEST_CHANGES` is impossible by construction. The default event is `COMMENT`. |
 | **Docs-only diffs get approved, not peppered** | A change that alters no behavior — documentation, OpenSpec markdown, a comment-only edit to a code file — gets one `APPROVE` with the notes in its body instead of a wall of inline suggestions. Nothing worth saying means a bare approval, no body. It asks you first, every time. |
 | **The summary states the count and the question** | Every run reports how many comments there are by severity, whether the PR can be approved, and asks for the one thing a yes would authorise. |
@@ -67,8 +68,8 @@ repeated at the top of the report:
 
 ```
 💬 0 comentarios.
-⚠️ Se puede aprobar: sí, pero lo apruebas tú — cobertura reducida: sin gh.
-📭 Nada que enviar.
+⚠️ Se puede aprobar: sí, pero lo apruebas tú — cobertura reducida: security not-run.
+❓ ¿Publico el resumen de la Ronda 1? Revisión parcial: security no corrió.
 ```
 
 The markers are a closed set, one per line:
@@ -94,7 +95,8 @@ run already is one until you answer.
 **The approval is only offered when the looking actually happened.** On a diff
 that changes behavior it requires every routed profile and the verify pass to
 have run, with no reduced context. Anything less and the line reads `sí, pero lo
-apruebas tú — cobertura reducida`, with no question attached.
+apruebas tú — cobertura reducida`, and the question offers only the round
+summary, marked partial.
 
 **Zero comments does not mean zero problems.** If the findings were dropped
 because CodeRabbit or a teammate already raised them and those threads are
@@ -103,12 +105,43 @@ still open, the problems are unfixed and the approval is withheld:
 ```
 💬 0 comentarios. 4 omitidos por duplicado sobre hilos abiertos.
 🚫 Se puede aprobar: no — 4 hallazgos ya están abiertos en hilos de coderabbit (3), @juan (1).
-📭 Nada que enviar — el autor ya los tiene.
+❓ ¿Publico el resumen de la Ronda 2? Quedan 4 pendientes.
 ```
 
-Nothing is posted in that case either. The author is already having that
-conversation; a comment pointing at it adds nothing. Dropped onto a *resolved*
-thread is different — someone decided, and the approval stays available.
+No new comment goes out in that case: the author is already having that
+conversation. The round summary lists the four under `Pendientes`, each linked
+to its thread. Dropped onto a *resolved* thread is different — someone decided,
+and the approval stays available.
+
+## Rounds
+
+Every review this skill publishes is a round, numbered from the reviews this
+account already left on the PR. Nothing is stored locally.
+
+```markdown
+Ronda 2. 1 comentario nuevo, ninguno bloquea el merge.
+
+Nuevos:
+- `app/models/booking.rb:42` — importante: el monto negativo pasa la validación
+
+Resueltos desde la ronda anterior:
+- `app/controllers/trips_controller.rb:30` — N+1 al listar asientos
+
+Pendientes:
+- `app/models/seat.rb:77` — race condition al reservar el asiento (https://github.com/…)
+```
+
+| Case | What goes out |
+|---|---|
+| round 1 with findings | `COMMENT`, `Nuevos` only — there is no earlier round to resolve |
+| nothing found, nothing pending, nothing resolved | bare `APPROVE`, no body |
+| fixes landed, nothing new | `APPROVE` listing `Resueltos`, and our settled threads resolved |
+| findings already on an open thread, ours or another reviewer's | summary-only `COMMENT`, those under `Pendientes` |
+| reduced coverage | summary-only `COMMENT`, heading marked `revisión parcial` |
+| a round already went out at this head, nothing new | nothing |
+
+Empty lists are left out. Severity is written as a word, so the round body stays
+within the one-emoji rule for posted text.
 
 ## Comment style
 
@@ -154,7 +187,7 @@ approval, as one review:
 
 ```
 event: APPROVE
-body:  1 comentario (1 suggestion). Ninguno bloquea el merge.
+body:  Ronda 1. 1 comentario nuevo, ninguno bloquea el merge. + Nuevos list
 comments: the suggestions, anchored on their lines
 ```
 
@@ -170,18 +203,22 @@ gets a disposition from what the author replied:
 
 | Reply | Disposition | What happens |
 |---|---|---|
-| "ya quedó" / "fixed in abc123", and the problem is gone | `resuelto-confirmado` | silent, ledger count |
-| explains why it does not apply, and the argument holds | `no-aplica-aceptado` | silent, and it keeps holding on later runs |
-| thread resolved by anyone | `cerrado` | silent, ledger count |
-| claims it is fixed, but the problem is still there | `dice-resuelto-sigue-presente` | local report only |
-| argues it does not apply, but the argument does not hold | `refutado` | local report only, with why |
-| asks us something | `pregunta-sin-responder` | local report, and an answer can be published |
-| nothing, or an acknowledgement with no claim | `sin-atender` | local report only |
+| anything, or nothing, and the problem is gone | `resuelto-confirmado` | `Resueltos`, thread resolved |
+| explains why it does not apply, and the argument holds | `no-aplica-aceptado` | `Resueltos` as `no aplica`, and it keeps holding on later runs |
+| thread resolved by anyone | `cerrado` | `Resueltos` |
+| claims it is fixed, but the problem is still there | `dice-resuelto-sigue-presente` | `Pendientes` |
+| argues it does not apply, but the argument does not hold | `refutado` | `Pendientes`; local report says why |
+| asks us something | `pregunta-sin-responder` | `Pendientes`, and an answer can be published |
+| nothing, or an acknowledgement with no claim | `sin-atender` | `Pendientes` |
 
-Only `pregunta-sin-responder` can produce new posted text, and only through the
-same gate as a finding: printed first, sent after your go, as a reply on that
-thread. Nothing else in this table ever reaches GitHub — no nudges, no "this is
-still open", no reposts.
+The problem gone from the code settles a thread whatever the reply says — or
+with no reply at all: it is `resuelto-confirmado`, listed under `Resueltos`, and
+resolved on publish.
+
+Only `pregunta-sin-responder` can produce a reply, and only through the same
+gate as a finding: printed first, sent after your go, on that thread. Every
+other disposition reaches GitHub only as a line in the round body — no nudges,
+no reposts.
 
 Nothing is remembered between runs. Every disposition is re-derived from the PR
 itself, so an accepted rebuttal keeps being accepted without any local state.
@@ -215,12 +252,12 @@ so it reports the real outcome rather than a guess:
 post_review: dry run. Payload that would be sent:
 {
   "event": "COMMENT",
-  "body": "3 comentarios. Ninguno bloquea el merge.",
+  "body": "Ronda 2. 3 comentarios nuevos, ninguno bloquea el merge.\n\nNuevos:\n- …",
   "comments": [
     { "path": "app/models/user.rb", "line": 11, "side": "RIGHT", "body": "🟠 ..." }
   ]
 }
-post_review: inline=1 degraded=2 replies=0 already-posted=1
+post_review: round=2 inline=1 degraded=2 replies=0 resolve=0 already-posted=1
 ```
 
 Read that last line before publishing:
@@ -229,7 +266,9 @@ Read that last line before publishing:
 |---|---|
 | `inline` | anchored to a line inside a diff hunk |
 | `degraded` | the target is not in the diff, so it moves into the review body instead of being dropped |
+| `round` | the round number in the body; `-` when no review is created |
 | `replies` | answers posted on our own earlier threads |
+| `resolve` | our own open threads that will be resolved; others are refused |
 | `already-posted` | same path and opening text already on the PR, skipped so neither a retry nor a re-review can duplicate. The line number is not part of the match, so code that moved is still recognised |
 
 A high `degraded` count usually means the findings point at context the diff did
@@ -256,9 +295,10 @@ python3 scripts/post_review.py --repo owner/name --pr 402 \
 ]
 ```
 
-Omit `--notes` to approve with no body at all. A docs-only diff with nothing
-wrong in it gets an approval and silence — a comment announcing that there is
-nothing to comment is still noise on the pull request.
+Omit `--notes` to approve with no body at all, as long as nothing was resolved
+since the previous round. A docs-only diff with nothing wrong in it gets an
+approval and silence — a comment announcing that there is nothing to comment is
+still noise on the pull request.
 
 `--approve` also takes `--findings`, for the case where only suggestions
 survived:
@@ -269,11 +309,11 @@ python3 scripts/post_review.py --repo owner/name --pr 206 \
 ```
 
 It refuses a finding whose body opens with 🔴 or 🟠, and one with no severity
-marker at all — an approval never goes out next to something that contradicts
-it. `--findings` and `--notes` are separate runs. `--replies` is refused in
-either case; an answer owed to the author goes out before the approval. The
-approval pins the head commit it approved, and the script refuses to approve
-that same commit twice.
+marker at all, and a `summary.json` with `pendientes` or `parcial` — an approval
+never goes out next to something that contradicts it. `--findings` and `--notes`
+are separate runs. `--replies` rides along; the answer goes out before the
+approval. The approval pins the head commit it approved, and the script refuses
+to approve that same commit twice.
 
 ### `findings.json`
 
@@ -290,10 +330,9 @@ that same commit twice.
 
 `side` defaults to `RIGHT`. Omit `line` for a finding with no single-line
 anchor; it goes to the review body. `body` should already be formatted by
-[reference/comment-form.md](reference/comment-form.md).
-
-An empty array publishes nothing and exits cleanly, which is the same outcome as
-a clean review.
+[reference/comment-form.md](reference/comment-form.md). An optional `summary`
+is the one-line gist listed under `Nuevos`; it defaults to the body's first
+line.
 
 ### `replies.json`
 
@@ -309,6 +348,20 @@ a clean review.
 `in_reply_to` is the id of the comment being answered; the reply lands on that
 thread. Pass it with `--replies`, alone or together with `--findings`. A reply
 whose text is already on the thread is skipped.
+
+### `summary.json` and `resolve.json`
+
+```json
+{
+  "resueltos": ["`app/controllers/trips_controller.rb:30` — N+1 al listar asientos"],
+  "pendientes": ["`app/models/seat.rb:77` — race condition al reservar el asiento (https://github.com/…)"],
+  "parcial": "security no corrió"
+}
+```
+
+Every key is optional. `resolve.json` is an array of review-thread node ids
+(`PRRT_…`). The publisher resolves only open threads this account opened with a
+severity marker, after the review is published.
 
 ## Layout
 
@@ -327,14 +380,14 @@ review-changes/
 │   ├── frontend.md               # client state, a11y, weight
 │   └── security.md               # authz, injection, secrets
 ├── scripts/post_review.py        # deterministic publisher
-├── tests/test_post_review.py     # 15 tests over the publisher, gh stubbed
-├── evals/evals.json              # 41 scenarios
+├── tests/test_post_review.py     # 26 tests over the publisher, gh stubbed
+├── evals/evals.json              # 46 scenarios
 └── agents/openai.yaml            # host adapter
 ```
 
 ## Tests
 
-The publisher has 15 tests. No network, no dependencies, no test runner:
+The publisher has 26 tests. No network, no dependencies, no test runner:
 
 ```bash
 python3 skills/review-changes/tests/test_post_review.py
@@ -342,10 +395,10 @@ python3 skills/review-changes/tests/test_post_review.py
 
 They stub `gh`, so nothing reaches GitHub. They cover the two guarantees that
 are expensive to get wrong — a comment is never posted twice, and the same head
-commit is never approved twice — plus the flag combinations the publisher
-refuses.
+commit is never approved twice — plus round numbering, thread resolution, and
+the flag combinations the publisher refuses.
 
-`evals/evals.json` is a different thing: 41 declarative scenarios describing what
+`evals/evals.json` is a different thing: 46 declarative scenarios describing what
 the skill should do. The repository has no eval runner, so they are read, not
 executed.
 
@@ -361,8 +414,7 @@ Publishing and deduplication are then recorded as `not-run:no-pr-context`.
 ## Scope
 
 One target per run: one PR, one branch comparison, or one working tree. No
-monorepo submodule walking, no PR stacks, no remediation plans, no thread
-resolution. It answers a question on one of its own threads; it never opens a
-discussion on someone else's. It approves only a diff that changes no behavior,
-never code. It stacks with other review tools by adding its own section rather
+monorepo submodule walking, no PR stacks, no remediation plans. It resolves and
+answers only its own threads; it never resolves or opens a discussion on someone
+else's. It stacks with other review tools by adding its own section rather
 than replacing theirs.

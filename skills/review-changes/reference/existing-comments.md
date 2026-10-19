@@ -32,7 +32,7 @@ gh api graphql -f query='
       pullRequest(number:$num){
         reviewThreads(first:100){ nodes{
           id isResolved isOutdated path line
-          comments(first:20){ nodes{ author{login} body createdAt } } } } } } }' \
+          comments(first:20){ nodes{ databaseId url author{login} body createdAt } } } } } } }' \
   -F owner=<owner> -F repo=<repo> -F num=<n>
 
 # Fallback when GraphQL is unavailable: no resolution state
@@ -93,8 +93,9 @@ discussed. Reporting that as "no encontré hallazgos" would be false, and
 approving on it would approve known-open problems.
 
 Pass the `abierto` count and its per-source breakdown to the resumen block in
-`SKILL.md`. It never reaches GitHub — the author already has those threads, and
-a comment pointing at a conversation they are already having adds nothing.
+`SKILL.md`. Each `abierto` drop also becomes one `pendientes` line in the round
+body, `ya señalado por <source>` with that thread's `url`. That line is the only
+trace on GitHub: no reply on their thread, no new comment.
 
 ## Keep
 
@@ -115,5 +116,5 @@ publishing.
 Report the drop count and its sources, for example
 `dedup: 4 omitidos — coderabbit 3, @juan 1`.
 
-The count is for the local report only. Never post it, and never post a
-comment about deduplication.
+The count is for the local report only. The round body lists the open items,
+never the count of drops or the word duplicate.

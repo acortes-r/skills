@@ -17,6 +17,7 @@ same pull request, and to read what the author replied to what was already said.
 - Read the reply
 - Dispositions
 - Check whether the problem is still present
+- Feed the round
 - Answer a question
 - Ledger
 
@@ -50,6 +51,8 @@ What this pass reads that the other one discards:
 - `comments.nodes[1..]` — the replies. The other pass only looks at the first.
 - `isResolved`, `isOutdated`, `path`, `line` — for the disposition.
 - Each reply's `author.login` and `createdAt`.
+- The thread `id` — the node id that resolving needs — and the first comment's
+  `url` for the round body.
 
 REST fallback (`/pulls/<n>/comments`) carries `in_reply_to_id` but no resolution
 state. Replies are still readable; resolution is not. Record it and treat every
@@ -73,13 +76,16 @@ Classify every thread of ours into exactly one:
 
 | Disposition | Condition | Behavior |
 |---|---|---|
-| `resuelto-confirmado` | reply claims it is fixed **and** the problem is gone from the current diff | silent; ledger count only |
-| `no-aplica-aceptado` | reply argues it does not apply **and** the argument holds against the code | silent; ledger count only. The finding is discarded this run and every later run, because the thread is re-read each time |
-| `cerrado` | thread is resolved, by anyone | silent; ledger count only |
-| `dice-resuelto-sigue-presente` | reply claims it is fixed **but** the problem is still in the current diff | local report; never published |
-| `refutado` | reply argues it does not apply **but** the argument does not hold against the code | local report, with why it does not hold; never published |
-| `pregunta-sin-responder` | reply asks us something and we have not answered | local report, listed first; an answer may be published through step 7 |
-| `sin-atender` | no reply, or no claim, and the problem is still present | local report; never published |
+| `resuelto-confirmado` | the problem is gone from the current code, whatever the reply says or with no reply at all | `resueltos`; the thread goes to `resolve.json` while it is open |
+| `no-aplica-aceptado` | reply argues it does not apply **and** the argument holds against the code | `resueltos`, as `no aplica: <the author's reason>`. The finding is discarded this run and every later run, because the thread is re-read each time |
+| `cerrado` | thread is resolved, by anyone | `resueltos` |
+| `dice-resuelto-sigue-presente` | reply claims it is fixed **but** the problem is still in the current code | `pendientes`; local report says why the claim does not hold |
+| `refutado` | reply argues it does not apply **but** the argument does not hold against the code | `pendientes`; local report says why the argument does not hold |
+| `pregunta-sin-responder` | reply asks us something and we have not answered | `pendientes`; local report lists it first, and an answer may be published through step 7 |
+| `sin-atender` | no reply, or no claim, and the problem is still present | `pendientes` |
+
+`resuelto-confirmado` is checked first: once the problem is gone, the thread is
+settled, and nothing the author wrote or did not write changes that.
 
 No state file is kept. Every disposition is derived from the PR on each run, so
 an accepted rebuttal keeps holding without anything being remembered locally.
@@ -91,8 +97,9 @@ open thread from another reviewer does. `resuelto-confirmado`,
 
 ## Check whether the problem is still present
 
-Only for threads that need it: `resuelto-confirmado` vs `dice-resuelto-sigue-presente`,
-and `sin-atender`. Never for all of them.
+For every open thread of ours: whether the problem is gone decides between
+`resuelto-confirmado` and every live disposition. A resolved thread is `cerrado`
+and needs no check.
 
 The thread's stored `line` is where the comment was anchored when it was posted.
 Code moves. Read the file at its current state and find the construct the comment
@@ -102,6 +109,25 @@ moved, not proof that it was fixed.
 Gone from the current diff but still in the file: the problem is still present.
 The diff boundary governs what this skill *finds*, not whether an existing
 finding was resolved.
+
+## Feed the round
+
+This pass hands step 7 two lists for `summary.json` and the ids for
+`resolve.json`. Each list item is one line, shaped by the round-body section of
+`comment-form.md`.
+
+- **`pendientes`** — every live thread, every round, at its current line, with
+  the first comment's `url`. A live problem stays visible until it is settled.
+- **`resueltos`** — settled threads the author has not been told about yet. Read
+  the bodies of our earlier rounds (`gh pr view <n> --json reviews`, already
+  collected): a thread whose line already appears under `Resueltos` in one of
+  them is left out. Round 1 has no earlier round, so it has no `resueltos`.
+- **`resolve.json`** — the node `id` of every open `resuelto-confirmado` thread.
+  The question in the resumen block names how many, and the publisher refuses
+  any thread this account did not open with a severity marker.
+
+The disposition names never reach the lists. The author reads what was found
+and where, not how this pass classified it.
 
 ## Answer a question
 
@@ -115,8 +141,8 @@ text. Conditions, both required:
 The answer goes as a reply on that thread, carrying its comment id, never as a
 new comment. One answer per thread per run.
 
-On a docs-only diff the reply is sent in its own publisher run, before the
-approval: `--approve` refuses `--replies`.
+On a docs-only diff the reply rides in the same publisher run as the approval;
+the publisher sends it first.
 
 ## Ledger
 
@@ -126,4 +152,5 @@ One row, with the disposition counts:
 | prior-reviews | ran | 7 hilos nuestros: 2 resueltos, 1 no-aplica, 3 sin atender, 1 pregunta |
 ```
 
-Never post any of this. The author does not need to know a re-review ran.
+The ledger row stays local. What the author sees of this pass is the round
+body's `Resueltos` and `Pendientes` lists.

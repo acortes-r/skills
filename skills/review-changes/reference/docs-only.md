@@ -8,8 +8,8 @@ description: Classifying a diff that changes no behavior, and approving it, for 
 Use this profile only inside `review-changes`, in step 2, before any other
 profile is routed. It answers one question: **does this diff change behavior?**
 
-When the answer is no, the review can end in `APPROVE` instead of `COMMENT`.
-That is the only case where this skill approves anything, and it still needs the
+When the answer is no, the review can end in `APPROVE` instead of `COMMENT`,
+with the notes in the body instead of a wall of suggestions. It still needs the
 user's explicit go.
 
 ## Contents
@@ -100,10 +100,10 @@ unknown syntax means behavior change.
 5. Ask for the go. The go has to be for the approval, not just for the text. On
    anything else, keep it local.
 6. On a yes, publish with `--approve`. No inline comments are created in this
-   mode; every note lives in the body.
+   mode; every note lives in the round body.
 
-No notes at all means no body. The approval goes in bare and the question is
-`¿Apruebo el PR sin comentario?`. A docs-only diff with nothing wrong in it
+No notes and nothing resolved since the previous round means no body. The
+approval goes in bare and the question is `¿Apruebo el PR sin comentario?`. A docs-only diff with nothing wrong in it
 gets an approval and silence, not a comment announcing that there is nothing to
 comment.
 

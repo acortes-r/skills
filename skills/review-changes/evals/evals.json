@@ -51,12 +51,12 @@
     {
       "id": 5,
       "prompt": "Review PR #900. The diff is small, follows every project rule, and has no issues.",
-      "expected_output": "No review object is created, no write API call is made, and the clean message is returned for the user to approve manually.",
+      "expected_output": "No COMMENT review is created; the approval is offered and, on a yes, goes in bare as round 1.",
       "expectations": [
-        "Makes no GitHub write API call whatsoever.",
-        "Returns the exact clean message plus the ledger.",
-        "Does not call gh pr review --approve or emit an APPROVE event.",
-        "Does not open a review to state that the code is fine."
+        "Creates no COMMENT review to state that the code is fine.",
+        "Asks ¿Apruebo el PR? naming how many files were reviewed.",
+        "Makes no GitHub write API call while the question is unanswered.",
+        "On a yes, approves with no body: nothing new, nothing resolved, nothing pending."
       ]
     },
     {
@@ -94,25 +94,25 @@
     {
       "id": 9,
       "prompt": "Re-review PR #341. This skill already reviewed it two days ago and left four inline comments. One of them has no reply, is not resolved, and the problem it describes is still in the code — which has since moved from line 42 to line 51.",
-      "expected_output": "Nothing is republished; the still-open finding appears only in the local report at its current line.",
+      "expected_output": "No comment is republished; the still-open finding is listed under Pendientes in the round body at its current line.",
       "expectations": [
         "Identifies the thread as ours via the authenticated login plus the severity marker opening the body.",
-        "Classifies it as sin-atender and posts nothing about it.",
+        "Classifies it as sin-atender.",
         "Lists it under Ya comentado — sin publicar at line 51, not line 42.",
-        "Records the disposition counts in the prior-reviews ledger row.",
-        "Does not post a new comment, a reply, or a nudge that the earlier comment is still open."
+        "Puts it in pendientes at line 51 with the thread's url, and in no new inline comment or reply.",
+        "Records the disposition counts in the prior-reviews ledger row."
       ]
     },
     {
       "id": 10,
       "prompt": "Re-review PR #341. The author replied 'ya quedó, gracias' to one of our earlier comments and the code no longer contains the problem. The thread is still open.",
-      "expected_output": "The finding is dropped silently as resuelto-confirmado and appears only as a ledger count.",
+      "expected_output": "The thread is resuelto-confirmado: listed under Resueltos and resolved on publish, after the user's go.",
       "expectations": [
         "Reads the reply semantically rather than matching keywords.",
         "Verifies against the current code that the problem is gone before trusting the claim.",
-        "Does not list it under Ya comentado — sin publicar.",
-        "Counts it in the prior-reviews ledger row.",
-        "Does not resolve the thread."
+        "Lists it under Resueltos desde la ronda anterior in the round body.",
+        "Puts the thread's node id in resolve.json and names the resolution in the resumen question.",
+        "Resolves nothing before the user's go."
       ]
     },
     {
@@ -181,7 +181,7 @@
         "Matches an already-posted comment by path and opening text, not by line number.",
         "Skips all three and counts them in already-posted.",
         "Publishes only the findings with no earlier thread.",
-        "Creates no review at all when every finding was already posted."
+        "Creates no review at all when every finding was already posted and a round already went out at this head commit."
       ]
     },
     {
@@ -205,7 +205,7 @@
         "Offers the approval even though there is nothing to say.",
         "Asks ¿Apruebo el PR sin comentario? in the resumen block.",
         "Publishes APPROVE with no body at all, not a body stating there is nothing to comment.",
-        "Does not fall back to the clean message used for code diffs.",
+        "Does not fall back to a COMMENT review.",
         "Still waits for the explicit go before approving."
       ]
     },
@@ -296,7 +296,7 @@
         "Line 2 reads Se puede aprobar: sí.",
         "Line 3 asks ¿Apruebo el PR? naming how many files were reviewed.",
         "Creates no review object while the question is unanswered.",
-        "Approves with no body on a yes, because nothing was found to say."
+        "On a yes, approves with no body when nothing was resolved since the previous round."
       ]
     },
     {
@@ -330,17 +330,18 @@
         "Line 2 reads Se puede aprobar: sí.",
         "Line 3 asks ¿Apruebo el PR? No encontré hallazgos en 12 archivos.",
         "Creates no COMMENT review, because there is nothing to comment.",
-        "On a yes, approves with no notes and therefore no body.",
+        "On a yes, approves with no notes and no body when no earlier round left anything resolved.",
         "On anything other than a yes, sends nothing."
       ]
     },
     {
       "id": 30,
       "prompt": "Review PR #415. The diff changes application code, no finding survived, but the security profile could not run because the dependency manifest could not be read.",
-      "expected_output": "No approval is offered: the review did not run to completion.",
+      "expected_output": "No approval is offered; the round summary, marked partial, is the only thing offered.",
       "expectations": [
         "Line 2 reads Se puede aprobar: sí, pero lo apruebas tú — cobertura reducida, naming the security profile.",
-        "Line 3 is Nada que enviar. with no question attached.",
+        "Line 3 asks ¿Publico el resumen de la Ronda <R>? Revisión parcial: security no corrió.",
+        "On a yes, publishes a COMMENT whose heading reads Ronda <R> (revisión parcial: security no corrió).",
         "Emits no APPROVE even though no finding survived.",
         "Records the profile as not-run in the ledger with its reason."
       ]
@@ -370,13 +371,13 @@
     {
       "id": 33,
       "prompt": "Review PR #420. Four findings survive verification, and all four are dropped because CodeRabbit and a human teammate already raised them. All of those threads are still open and unresolved.",
-      "expected_output": "Nothing is published, and the approval is not offered: zero comments does not mean zero problems.",
+      "expected_output": "No new comment and no approval; the round summary lists the four as pending, linked to the threads that already carry them.",
       "expectations": [
         "Line 1 reads 0 comentarios. 4 omitidos por duplicado sobre hilos abiertos.",
         "Line 2 withholds the approval, naming the per-source counts of the open threads.",
-        "Line 3 is Nada que enviar — el autor ya los tiene. with no question attached.",
+        "Line 3 asks ¿Publico el resumen de la Ronda <R>? Quedan 4 pendientes.",
         "Never claims it found no findings when four were dropped as duplicates.",
-        "Posts no comment pointing at the earlier review, and no comment about deduplication.",
+        "On a yes, lists each under Pendientes with ya señalado por <source> and that thread's url, and posts nothing on their threads.",
         "Lists the four under Hilos abiertos de otros in the local report."
       ]
     },
@@ -406,12 +407,12 @@
     {
       "id": 36,
       "prompt": "Re-review PR #423. Every finding this run produces matches one of our own earlier threads, all classified sin-atender.",
-      "expected_output": "The approval is withheld: our own unanswered thread is as open as anyone else's.",
+      "expected_output": "The approval is withheld; the summary-only round lists our open threads as pending.",
       "expectations": [
         "Treats sin-atender as an open thread for the purpose of the approval.",
-        "Withholds the approval and asks no question.",
+        "Withholds the approval and offers only the round summary.",
         "Lists them under Nuestros hilos rather than Hilos abiertos de otros.",
-        "Publishes nothing, including no nudge that the earlier comments are still open."
+        "On a yes, lists them under Pendientes with links, and posts no reply or new comment on them."
       ]
     },
     {
@@ -469,6 +470,60 @@
         "Names the finding whose body carries no severity marker.",
         "Does not guess a severity in order to proceed.",
         "Leaves the pull request untouched."
+      ]
+    },
+    {
+      "id": 42,
+      "prompt": "Review PR #440 for the first time. Two findings survive: one important, one suggestion.",
+      "expected_output": "A COMMENT review whose body opens with Ronda 1 and lists the two findings under Nuevos, with no Resueltos or Pendientes section.",
+      "expectations": [
+        "Asks ¿Publico la Ronda 1 con 2 comentarios?",
+        "Gives each finding a one-line summary for Nuevos.",
+        "The round body names severity in words (importante, sugerencia), with no emoji.",
+        "Leaves out Resueltos and Pendientes because there is no earlier round."
+      ]
+    },
+    {
+      "id": 43,
+      "prompt": "Re-review PR #440. Since round 1 the author fixed the important finding without replying, left the suggestion untouched, and nothing new survives.",
+      "expected_output": "A summary-only round 2: the fixed one under Resueltos and its thread resolved, the suggestion under Pendientes.",
+      "expectations": [
+        "Classifies the fixed thread as resuelto-confirmado even with no reply.",
+        "Classifies the untouched one as sin-atender and withholds the approval.",
+        "Asks ¿Publico el resumen de la Ronda 2? Quedan 1 pendientes. y cierro 1 hilos resueltos, or an equivalent naming both.",
+        "Posts a COMMENT whose body reads Ronda 2. Sin comentarios nuevos. with both lists.",
+        "Resolves only the fixed thread, and only after the go."
+      ]
+    },
+    {
+      "id": 44,
+      "prompt": "Re-review PR #440 once more after the author also fixed the suggestion. Nothing new survives and every pass ran.",
+      "expected_output": "The approval is offered; on a yes it goes out as round 3, listing only what was resolved since round 2.",
+      "expectations": [
+        "Offers the approval: nothing is pending.",
+        "Lists only the newly fixed thread under Resueltos, not the one already announced in round 2.",
+        "Resolves the newly fixed thread in the same go.",
+        "Approves with the round 3 body rather than bare, because something was resolved."
+      ]
+    },
+    {
+      "id": 45,
+      "prompt": "Review PR #440 again right after round 2 went out, with no new commit pushed and nothing new found.",
+      "expected_output": "Nothing is sent: a round already went out at this head commit.",
+      "expectations": [
+        "Line 3 reads Ronda 2 ya publicada en <short sha>. Nada que enviar.",
+        "Creates no second summary review at the same head commit.",
+        "Asks no question."
+      ]
+    },
+    {
+      "id": 46,
+      "prompt": "Re-review PR #441. One of our threads is fixed in the code, and a thread opened by a human teammate on the same PR is also fixed in the code.",
+      "expected_output": "Only our thread is resolved; the teammate's stays as it is.",
+      "expectations": [
+        "Puts only our thread's id in resolve.json.",
+        "Leaves the teammate's thread unresolved.",
+        "Would be refused by the publisher if the teammate's thread id were passed."
       ]
     }
   ]
