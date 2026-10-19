@@ -97,51 +97,66 @@ aplica.
   markers of the resumen block — 💬 ✅ ⚠️ 🚫 🔒 ❔ ❓ 📭 — are local only and
   never appear in posted text.
 - Advice to split the work into separate branches.
-- Anything about a re-review having run: disposition names, thread counts,
-  "ya comenté esto antes", or a nudge that an earlier comment is still open.
+- Re-review talk outside the round body: disposition names, "ya comenté esto
+  antes", or a reply nudging that an earlier comment is still open. The round
+  body's `Pendientes` list is the one place an open item is named again.
 
-## Review body
+## Round body
 
-The review's top-level body is one line naming the count and the highest
-severity present, for example:
+Every review this skill publishes carries the round body, built by
+`scripts/post_review.py` from its inputs. One heading line, then up to three
+lists, each left out when empty:
 
+```markdown
+Ronda 2. 2 comentarios nuevos, ninguno bloquea el merge.
+
+Nuevos:
+- `app/models/booking.rb:42` — importante: el monto negativo pasa la validación
+- `app/services/refund.rb:18` — sugerencia: sacar el cálculo de la tarifa a un método
+
+Resueltos desde la ronda anterior:
+- `app/controllers/trips_controller.rb:30` — N+1 al listar asientos
+- `app/jobs/sync_job.rb:12` — no aplica: el job es idempotente
+
+Pendientes:
+- `app/models/seat.rb:77` — race condition al reservar el asiento (https://github.com/…)
+- `app/services/fare.rb:20` — redondeo con float, ya señalado por coderabbit (https://github.com/…)
 ```
-4 comentarios (1 critical, 3 suggestion). Ninguno bloquea el merge.
-```
 
-No hallazgos means no review body, because no review is created.
+- The heading names the round and the count of new comments. Nothing new:
+  `Sin comentarios nuevos.`; nothing in any list: `Sin comentarios.` Reduced
+  coverage adds `(revisión parcial: <qué no corrió>)` after the number.
+- Each item is `` `path:line` — `` and one clause, at the code's current line.
+  Severity is a word — `crítico`, `importante`, `sugerencia` — never the
+  emoji: the item is a summary, not the finding.
+- A `Nuevos` item comes from the finding's `summary`: what fails, in the
+  finding's own terms, without the failing input or the fix. Those live in the
+  inline comment.
+- A `Resueltos` item says what the problem was, not who fixed it. A rebuttal the
+  code confirms reads `no aplica: <the reason>`.
+- A `Pendientes` item carries the link to its thread, and `ya señalado por
+  <source>` when the thread is someone else's.
 
 ## Approve body
 
-A docs-only diff approves through the body alone — no inline comments exist in
-that mode. One opening line, then one line per note.
+An approval carries the same round body. With nothing new, nothing resolved and
+no notes, it goes in bare: the green check already says the code was reviewed.
 
-Each note is `path` · what is wrong, keeping its severity marker. Same
-telegraphic Spanish, same ceiling of one line. No ```suggestion blocks: the
-approval already went through, and a suggestion block invites a change the
+A docs-only diff puts its notes after the heading, one line per note, each
+`path` · what is wrong, keeping its severity marker. No ```suggestion blocks:
+the approval already went through, and a suggestion block invites a change the
 merge no longer waits for.
 
 ```markdown
-Solo documentación. 3 notas, ninguna bloquea.
+Ronda 1. Solo documentación. 3 notas, ninguna bloquea.
 
 🔵 `openspec/specs/pagos.md` — el endpoint `POST /refunds` documentado no existe en el código.
 🔵 `docs/deploy.md` — la variable `REDIS_URL` quedó con el nombre viejo.
 🔵 `README.md` — el badge apunta al repo anterior.
 ```
 
-No notes: **no body at all.** The approval goes in bare. Nothing to say means
-nothing is said, and a line stating there is nothing to say is still noise on
-the pull request.
+When the approval carries 🔵 findings inline, they are listed under `Nuevos`
+like any round, and the inline comments keep their normal shape.
 
-### Approving with suggestions attached
-
-When the approval carries 🔵 findings inline, the body is the ordinary review
-body instead, and the comments keep their normal shape — severity marker,
-failing input, ```suggestion block:
-
-```markdown
-1 comentario (1 suggestion). Ninguno bloquea el merge.
-```
-
-Nothing in that body hints that the review approved. The green check already
+Nothing in the body hints that the review approved. The green check already
 says it, and a comment explaining the approval is noise.
