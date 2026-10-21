@@ -50,7 +50,7 @@ touching any of them is a behavior change:
 **Rule contracts** — `reference/project-rules.md` treats these as the project's
 law, and this skill already reviews a change to one as a finding:
 
-- `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, at any depth
+- `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `CODING_STANDARDS.md`, at any depth
 - `.cursor/rules/*.mdc`, `.cursorrules`, `.github/copilot-instructions.md`
 - `CONTRIBUTING.md`
 - `docs/adr/**`, `docs/architecture/**`, `docs/decisions/**`
@@ -89,9 +89,8 @@ unknown syntax means behavior change.
 ## The approve flow
 
 1. Classify. Not a docs-only diff: stop here, continue the normal review.
-2. Skip the code profiles in step 2. `migrations.md`, `frontend.md`,
-   `backend.md`, and `security.md` have nothing to say about prose; record them
-   as `skipped:docs-only`.
+2. Skip the code profiles in step 2. They have nothing to say about prose;
+   record each as `skipped:docs-only`.
 3. Review the prose against the project rules anyway. A docs-only diff can still
    contradict a spec, document an endpoint that does not exist, or leave an
    OpenSpec task claiming something the code never did. Those are notes.

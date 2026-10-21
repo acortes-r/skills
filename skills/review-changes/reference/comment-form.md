@@ -51,6 +51,33 @@ Este `Faraday.get` no lo tiene.
 ```
 ````
 
+## Spec contradictions
+
+Quote the scenario and name its file, like a rule:
+
+````markdown
+🟠 `specs/refunds/spec.md` · Scenario: Reembolso parcial: "THEN el cargo queda en estado `partially_refunded`".
+Un reembolso de 300 sobre 1000 lo deja en `refunded`.
+````
+
+Behavior no spec asks for is a question, not a defect:
+
+````markdown
+🔵 Este `return` descarta los reembolsos de monto 0, y ningún escenario de `add-partial-refunds` lo pide.
+Si es intencional, agrégalo a `specs/refunds/spec.md`; si no, quítalo.
+````
+
+## Missing tests
+
+Line 1 names the behavior no test pins. Line 2 is the case to write: input,
+expected result, and the test file it belongs in. No ```suggestion block: the
+test lives in another file.
+
+````markdown
+🟠 Ningún test cubre el reembolso parcial que agrega este `if`.
+Caso: reembolso de 300 sobre un cargo de 1000 deja `refunded_amount` en 300; va en `spec/services/refund_spec.rb`.
+````
+
 ## Suggestion blocks
 
 - Use one when the fix replaces the commented line or range, and the

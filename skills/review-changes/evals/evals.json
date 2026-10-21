@@ -525,6 +525,71 @@
         "Leaves the teammate's thread unresolved.",
         "Would be refused by the publisher if the teammate's thread id were passed."
       ]
+    },
+    {
+      "id": 47,
+      "prompt": "Review the current branch. The repository has no CLAUDE.md or AGENTS.md, but lib/billing/CODING_STANDARDS.md says \"Montos en centavos enteros, nunca Float.\" The diff adds lib/billing/invoice.rb computing total = price * 1.16 as a Float.",
+      "expected_output": "The CODING_STANDARDS.md rule is loaded as a level-1 contract and the Float total is reported as a rule violation that quotes it.",
+      "expectations": [
+        "Lists lib/billing/CODING_STANDARDS.md in the Reglas aplicables table with the rule's literal text and its heading.",
+        "Reports lib/billing/invoice.rb as a 🟠 rule violation quoting \"Montos en centavos enteros, nunca Float.\"",
+        "Does not record project-rules as not-run:no-project-rules-found."
+      ]
+    },
+    {
+      "id": 48,
+      "prompt": "Review the current branch. The diff changes lib/fares/rounding.rb so that round_fare(amount, mode) now takes (mode, amount). Two callers in app/services/quote.rb and app/jobs/reprice_job.rb, neither in the diff, still pass (amount, mode).",
+      "expected_output": "The correctness profile runs even though lib/ matches no stack profile, finds both stale callers by grep, and reports the break on the changed signature line.",
+      "expectations": [
+        "Records correctness as ran in the ledger, with the count of callers checked.",
+        "Names app/services/quote.rb and app/jobs/reprice_job.rb as broken callers.",
+        "Anchors the finding on the changed line in lib/fares/rounding.rb, not on a file outside the diff."
+      ]
+    },
+    {
+      "id": 49,
+      "prompt": "Review the current branch. The diff adds a branch to app/services/refund.rb that handles partial refunds, and changes the expected value in spec/services/refund_spec.rb from 1000 to 700 in the same commit. The PR body says nothing about the old value being wrong. No other test reaches the partial-refund branch.",
+      "expected_output": "The tests profile reports the untested partial-refund branch as a concrete case and flags the expected value changed alongside the code.",
+      "expectations": [
+        "Records tests as ran in the ledger.",
+        "Names the missing case with an input and expected result, and the spec file it belongs in, never just \"add tests\".",
+        "Rates the untested refund branch 🟠, because it moves money.",
+        "Reports the 1000 → 700 expectation change as a test weakened by the diff.",
+        "Posts the missing-test comment with no suggestion block."
+      ]
+    },
+    {
+      "id": 50,
+      "prompt": "Review the current branch. The only change is one line in .github/workflows/ci.yml: the rspec step gains continue-on-error: true. The repository's branch protection requires the ci check on main.",
+      "expected_output": "The gates profile runs despite the one-line diff and reports a silent pass: failing specs no longer fail the required check.",
+      "expectations": [
+        "Records gates as ran in the ledger.",
+        "Does not classify the diff as docs-only.",
+        "Names the real failure that now goes green: a failing spec no longer fails the ci check.",
+        "Rates the finding 🔴, because a required check on the default branch can no longer fail."
+      ]
+    },
+    {
+      "id": 51,
+      "prompt": "Review the current branch, add-partial-refunds. openspec/changes/add-partial-refunds/ has a scenario \"WHEN a refund of 300 is issued on a charge of 1000 THEN the charge state is partially_refunded\", a tasks.md with \"- [x] 2.3 Notify the customer by email\", and a design.md deciding \"Refunds are processed synchronously, not in a job.\" The diff sets the state to refunded on any refund, sends no email anywhere, silently ignores refunds of amount 0, and processes refunds synchronously.",
+      "expected_output": "The spec profile finds the change from the branch name, reports the contradicted scenario and the checked task with no work, asks about the unrequested zero-amount rule, and does not suggest moving refunds to a job.",
+      "expectations": [
+        "Records spec as ran with the change name add-partial-refunds.",
+        "Reports the refunded-vs-partially_refunded contradiction as 🟠, quoting the scenario verbatim.",
+        "Reports task 2.3 as marked done with no email sent in the diff or on the base branch.",
+        "Reports the zero-amount early return as a 🔵 that asks whether it is intended.",
+        "Discards any candidate that only proposes processing refunds in a background job, citing design.md."
+      ]
+    },
+    {
+      "id": 52,
+      "prompt": "Review PR #512, opened by dependabot[bot]. It changes only Gemfile and Gemfile.lock, bumping faraday from 2.9.0 to 2.9.2.",
+      "expected_output": "The PR is treated as a dependency bump: only the security profile's dependency checks run, and correctness and tests are skipped with a reason.",
+      "expectations": [
+        "Records correctness and tests as skipped:dependency-bump in the ledger.",
+        "Runs security.md and checks that the manifest and lockfile change together.",
+        "Does not ask for tests or report logic findings on the lockfile."
+      ]
     }
   ]
 }

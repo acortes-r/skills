@@ -28,6 +28,11 @@ result, the proposed fix, the severity, the source profile, and the diff.
 - A configured and CI-enforced linter, formatter, or type checker already
   reports it.
 - The fix contradicts a quoted project rule.
+- The candidate only prefers a different approach to a decision recorded in the
+  governing OpenSpec change's `design.md`. A defect inside that approach stays.
+- A missing-test candidate names no case, or a test on the base branch already
+  pins the case it names.
+- A gate candidate names no real failure that would now go green.
 - The candidate recommends splitting work into separate branches. When it also
   carries an independently evidenced technical risk, keep only the risk and
   drop the branch advice.

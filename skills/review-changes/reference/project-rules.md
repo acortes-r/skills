@@ -20,7 +20,8 @@ finding is written.
 Search these, highest authority first. Read every file that exists.
 
 **Level 1 — agent contracts**
-- `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` at the repository root
+- `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `CODING_STANDARDS.md` at the
+  repository root
 - the same filenames in **every directory touched by the diff**, walking from
   the repo root down to each changed file's directory
 
@@ -40,6 +41,11 @@ Search these, highest authority first. Read every file that exists.
 Nested level-1 files are the part other reviewers miss. A repository can hold a
 root `CLAUDE.md` plus a stricter one in `services/payments/`; a change under
 that path answers to both.
+
+`CODING_STANDARDS.md` is the file a team writes for review alone, so it is
+usually where the longest and most enforceable rules live. It sits beside the
+agent contracts, not under them: a changed file answers to every level-1 file
+that governs its path.
 
 ## Precedence
 

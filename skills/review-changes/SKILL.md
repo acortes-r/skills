@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires git. Pull-request features require an authenticated GitHub CLI (gh 2.40+). Host must provide file-read, grep, and shell tools.
 allowed-tools: Read, Grep, Glob, Bash
 metadata:
-  version: 0.5.0
+  version: 0.6.0
   review_event: COMMENT, or APPROVE on a diff that changes no behavior
   never_emits: REQUEST_CHANGES
   approves_only: after an explicit user go, never on its own
@@ -124,16 +124,26 @@ materially worsens.
 First read `reference/docs-only.md` and answer its question: does this diff
 change behavior? A diff where every changed file is documentation, or a code
 file whose every changed line is a comment, changes no behavior. It skips the
-four profiles below and takes the approve flow in step 7.
+code profiles below and takes the approve flow in step 7.
 
 Everything else is a normal review. Read only the profiles the diff needs.
 
 | Signal in the changed files | Profile |
 |---|---|
+| any file that changes behavior | `reference/correctness.md` — always |
+| application code that changes runtime behavior | `reference/tests.md` |
+| CI or deploy definitions, test or coverage config, shared mocks and fixtures, skip markers | `reference/gates.md` — at any size |
+| an `openspec/changes/` directory exists in the repository | `reference/spec.md` — it decides whether a change governs this diff |
 | `migrations/`, `schema.rb`, `*.sql`, `prisma/`, `alembic/` | `reference/migrations.md` — always, this is where data is lost |
 | `*.tsx`, `*.jsx`, `*.vue`, `*.svelte`, `*.css`, components | `reference/frontend.md` |
 | controllers, services, jobs, endpoints, queries, serializers | `reference/backend.md` |
 | auth, crypto, uploads, deserialization, env/secrets, dependency manifests | `reference/security.md` |
+
+A **dependency bump** is a PR whose author is a bot (`author.is_bot`, or a login
+ending in `[bot]`: Dependabot, Renovate) and whose every changed file is a
+dependency manifest or lockfile. It routes `reference/security.md` alone, for
+its dependency checks, and records `correctness` and `tests` as
+`skipped:dependency-bump`.
 
 Record each profile as `ran` or `skipped:<reason>` in the ledger. Do not read
 profiles the diff does not touch.
@@ -148,7 +158,8 @@ A candidate needs three things or it is not written down:
 3. the fix
 
 A rule violation additionally quotes the exact rule text and its source file
-and heading.
+and heading. A spec finding quotes the scenario, requirement, or task line the
+same way.
 
 Do not write candidates for: style the configured linter already reports,
 pre-existing issues the diff does not worsen, missing future consumers, or
@@ -423,6 +434,10 @@ The report is these eight parts, in this order:
 |---|---|---|
 | project-rules | ran | 6 reglas aplicables |
 | docs-only | skipped | behavior-change: app/models/user.rb |
+| correctness | ran | 5 símbolos cambiados, 12 llamadores revisados |
+| tests | ran | 2 casos sin test |
+| gates | skipped | sin CI ni configuración de tests en el diff |
+| spec | ran | add-partial-refunds: 1 escenario contradicho, 1 comportamiento no pedido |
 | migrations | ran | — |
 | frontend | skipped | sin archivos de UI en el diff |
 | security | not-run | — |
