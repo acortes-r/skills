@@ -54,6 +54,8 @@ file and case, never "add tests".
 
 - Pure refactors whose existing tests already pin the behavior
 - Coverage percentages, or a missing test file for a file with no logic
+- Skip markers, disabled CI steps, or test configuration — `gates.md` owns
+  those
 - More than one finding for the same untested behavior
 
 ## Severity

@@ -30,6 +30,7 @@ result, the proposed fix, the severity, the source profile, and the diff.
 - The fix contradicts a quoted project rule.
 - A missing-test candidate names no case, or a test on the base branch already
   pins the case it names.
+- A gate candidate names no real failure that would now go green.
 - The candidate recommends splitting work into separate branches. When it also
   carries an independently evidenced technical risk, keep only the risk and
   drop the branch advice.

@@ -557,6 +557,17 @@
         "Reports the 1000 → 700 expectation change as a test weakened by the diff.",
         "Posts the missing-test comment with no suggestion block."
       ]
+    },
+    {
+      "id": 50,
+      "prompt": "Review the current branch. The only change is one line in .github/workflows/ci.yml: the rspec step gains continue-on-error: true. The repository's branch protection requires the ci check on main.",
+      "expected_output": "The gates profile runs despite the one-line diff and reports a silent pass: failing specs no longer fail the required check.",
+      "expectations": [
+        "Records gates as ran in the ledger.",
+        "Does not classify the diff as docs-only.",
+        "Names the real failure that now goes green: a failing spec no longer fails the ci check.",
+        "Rates the finding 🔴, because a required check on the default branch can no longer fail."
+      ]
     }
   ]
 }
