@@ -48,7 +48,7 @@ queries, or middleware.
 ## Do not flag
 
 - Style, naming, or layout the configured linter reports
-- Missing tests — `review-changes` reports that from the diff, not here
+- Missing tests — `tests.md` owns them
 - Frontend, migration, or security concerns owned by other profiles
 - Architecture preferences with no failing input
 

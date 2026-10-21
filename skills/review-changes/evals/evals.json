@@ -545,6 +545,18 @@
         "Names app/services/quote.rb and app/jobs/reprice_job.rb as broken callers.",
         "Anchors the finding on the changed line in lib/fares/rounding.rb, not on a file outside the diff."
       ]
+    },
+    {
+      "id": 49,
+      "prompt": "Review the current branch. The diff adds a branch to app/services/refund.rb that handles partial refunds, and changes the expected value in spec/services/refund_spec.rb from 1000 to 700 in the same commit. The PR body says nothing about the old value being wrong. No other test reaches the partial-refund branch.",
+      "expected_output": "The tests profile reports the untested partial-refund branch as a concrete case and flags the expected value changed alongside the code.",
+      "expectations": [
+        "Records tests as ran in the ledger.",
+        "Names the missing case with an input and expected result, and the spec file it belongs in, never just \"add tests\".",
+        "Rates the untested refund branch 🟠, because it moves money.",
+        "Reports the 1000 → 700 expectation change as a test weakened by the diff.",
+        "Posts the missing-test comment with no suggestion block."
+      ]
     }
   ]
 }

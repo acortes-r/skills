@@ -51,6 +51,17 @@ Este `Faraday.get` no lo tiene.
 ```
 ````
 
+## Missing tests
+
+Line 1 names the behavior no test pins. Line 2 is the case to write: input,
+expected result, and the test file it belongs in. No ```suggestion block: the
+test lives in another file.
+
+````markdown
+🟠 Ningún test cubre el reembolso parcial que agrega este `if`.
+Caso: reembolso de 300 sobre un cargo de 1000 deja `refunded_amount` en 300; va en `spec/services/refund_spec.rb`.
+````
+
 ## Suggestion blocks
 
 - Use one when the fix replaces the commented line or range, and the

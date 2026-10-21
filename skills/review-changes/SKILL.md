@@ -131,6 +131,7 @@ Everything else is a normal review. Read only the profiles the diff needs.
 | Signal in the changed files | Profile |
 |---|---|
 | any file that changes behavior | `reference/correctness.md` — always |
+| application code that changes runtime behavior | `reference/tests.md` |
 | `migrations/`, `schema.rb`, `*.sql`, `prisma/`, `alembic/` | `reference/migrations.md` — always, this is where data is lost |
 | `*.tsx`, `*.jsx`, `*.vue`, `*.svelte`, `*.css`, components | `reference/frontend.md` |
 | controllers, services, jobs, endpoints, queries, serializers | `reference/backend.md` |
@@ -425,6 +426,7 @@ The report is these eight parts, in this order:
 | project-rules | ran | 6 reglas aplicables |
 | docs-only | skipped | behavior-change: app/models/user.rb |
 | correctness | ran | 5 símbolos cambiados, 12 llamadores revisados |
+| tests | ran | 2 casos sin test |
 | migrations | ran | — |
 | frontend | skipped | sin archivos de UI en el diff |
 | security | not-run | — |
