@@ -26,7 +26,7 @@ Or by command name in hosts that expose one: `/review-changes`.
 
 | | |
 |---|---|
-| **Project rules are first-class** | Reads `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` — including the nested ones in every directory the diff touches — plus `.cursor/rules`, `CONTRIBUTING.md`, and `docs/adr`. Rule findings quote the exact text and heading. Missing rule files are reported as a gap, not skipped silently. |
+| **Project rules are first-class** | Reads `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `CODING_STANDARDS.md` — including the nested ones in every directory the diff touches — plus `.cursor/rules`, `CONTRIBUTING.md`, and `docs/adr`. Rule findings quote the exact text and heading. Missing rule files are reported as a gap, not skipped silently. |
 | **Adversarial verification** | A second pass tries to refute every candidate and can only confirm, adjust, or discard. It can never add a finding. |
 | **Never repeats itself** | On a re-review it finds its own earlier threads, reads what the author replied, and decides from that: fixed, does not apply, or still open. A comment it already made is never made again — not reworded, not at a new line after a rebase. |
 | **Deduped against other reviewers** | Collects existing inline threads, PR-level comments, and bot summaries — CodeRabbit, Codacy, Sonar, Copilot, humans — and drops findings already covered. Resolved threads stay closed. A finding dropped onto an **open** thread still counts as a problem: it withholds the approval instead of vanishing. |

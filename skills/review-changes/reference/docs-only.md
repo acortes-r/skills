@@ -50,7 +50,7 @@ touching any of them is a behavior change:
 **Rule contracts** — `reference/project-rules.md` treats these as the project's
 law, and this skill already reviews a change to one as a finding:
 
-- `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, at any depth
+- `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `CODING_STANDARDS.md`, at any depth
 - `.cursor/rules/*.mdc`, `.cursorrules`, `.github/copilot-instructions.md`
 - `CONTRIBUTING.md`
 - `docs/adr/**`, `docs/architecture/**`, `docs/decisions/**`

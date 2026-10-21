@@ -525,6 +525,16 @@
         "Leaves the teammate's thread unresolved.",
         "Would be refused by the publisher if the teammate's thread id were passed."
       ]
+    },
+    {
+      "id": 47,
+      "prompt": "Review the current branch. The repository has no CLAUDE.md or AGENTS.md, but lib/billing/CODING_STANDARDS.md says \"Montos en centavos enteros, nunca Float.\" The diff adds lib/billing/invoice.rb computing total = price * 1.16 as a Float.",
+      "expected_output": "The CODING_STANDARDS.md rule is loaded as a level-1 contract and the Float total is reported as a rule violation that quotes it.",
+      "expectations": [
+        "Lists lib/billing/CODING_STANDARDS.md in the Reglas aplicables table with the rule's literal text and its heading.",
+        "Reports lib/billing/invoice.rb as a 🟠 rule violation quoting \"Montos en centavos enteros, nunca Float.\"",
+        "Does not record project-rules as not-run:no-project-rules-found."
+      ]
     }
   ]
 }
