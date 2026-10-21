@@ -139,6 +139,12 @@ Everything else is a normal review. Read only the profiles the diff needs.
 | controllers, services, jobs, endpoints, queries, serializers | `reference/backend.md` |
 | auth, crypto, uploads, deserialization, env/secrets, dependency manifests | `reference/security.md` |
 
+A **dependency bump** is a PR whose author is a bot (`author.is_bot`, or a login
+ending in `[bot]`: Dependabot, Renovate) and whose every changed file is a
+dependency manifest or lockfile. It routes `reference/security.md` alone, for
+its dependency checks, and records `correctness` and `tests` as
+`skipped:dependency-bump`.
+
 Record each profile as `ran` or `skipped:<reason>` in the ledger. Do not read
 profiles the diff does not touch.
 
