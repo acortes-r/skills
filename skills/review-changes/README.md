@@ -22,6 +22,9 @@ Use review-changes on the current diff
 
 Or by command name in hosts that expose one: `/review-changes`.
 
+Targets: a PR URL or `#123`, a branch, a commit hash, a range `a..b`, a path,
+or nothing for the working tree.
+
 ## What it does differently
 
 | | |

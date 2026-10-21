@@ -1,6 +1,6 @@
 ---
 name: review-changes
-description: Use when reviewing a diff, pull request, branch, or uncommitted working-tree changes before merge — including requests to review a PR, re-review a PR after new commits, check what changed, audit a migration, or check whether changes follow the project's own documented rules. Publishes findings as non-blocking GitHub suggestions, never repeats a comment it already made, and never requests changes. Ends every run by asking what to do with what it found, and acts only on the answer.
+description: Use when reviewing a diff, pull request, branch, commit, or uncommitted working-tree changes before merge — including requests to review a PR, re-review a PR after new commits, check what changed, audit a migration, or check whether changes follow the project's own documented rules. Publishes findings as non-blocking GitHub suggestions, never repeats a comment it already made, and never requests changes. Ends every run by asking what to do with what it found, and acts only on the answer.
 license: MIT
 compatibility: Requires git. Pull-request features require an authenticated GitHub CLI (gh 2.40+). Host must provide file-read, grep, and shell tools.
 allowed-tools: Read, Grep, Glob, Bash
@@ -96,8 +96,14 @@ Read the argument text. Resolve exactly one target:
 |---|---|
 | GitHub PR URL or `#123` | that PR's diff |
 | branch name | `git diff --merge-base <base>...<branch>` |
+| commit hash, full or short, or `HEAD`, `HEAD~2` | that commit alone: `git show --format= <sha>` |
+| commit range `<a>..<b>` or `<a>...<b>` | `git diff <a>..<b>`, or `git diff <a>...<b>` from their merge base |
 | path | changed files under that path only |
 | empty | `git diff --merge-base <base>` on the working tree |
+
+A word that names both a branch and a commit is the branch. A hash that is not a
+commit in this repository (`git rev-parse --verify <sha>^{commit}` fails): stop
+and say so.
 
 Resolve `<base>` as `origin/HEAD`, falling back to `origin/main`, then
 `origin/master`, then `main`.
@@ -114,7 +120,8 @@ gh pr diff <target> --name-only
 
 No `gh` available: continue on the local diff and record
 `reduced-context:no-gh` in the ledger. Steps 5 and 7 then cannot run; record
-them as `not-run:no-pr-context`.
+them as `not-run:no-pr-context`. A commit or range target has no PR context
+either, and records the same.
 
 The diff is the finding boundary. Report only what this diff introduces or
 materially worsens.
@@ -479,8 +486,8 @@ independent of session style.
 
 ## Scope boundaries
 
-This skill reviews one target: one PR, one branch comparison, or one working
-tree. It does not walk monorepo submodules, git superprojects, or PR stacks.
+This skill reviews one target: one PR, one branch comparison, one commit or
+commit range, or one working tree. It does not walk monorepo submodules, git superprojects, or PR stacks.
 It does not create remediation plans. It resolves only its own threads whose
 problem is gone, and answers a question only on one of its own threads, both
 through step 7; it never resolves or opens a discussion on someone else's.
