@@ -590,6 +590,38 @@
         "Runs security.md and checks that the manifest and lockfile change together.",
         "Does not ask for tests or report logic findings on the lockfile."
       ]
+    },
+    {
+      "id": 53,
+      "prompt": "/review-changes --local HEAD. HEAD is a local commit not yet pushed, with no PR. It adds app/services/fare.rb where total = base * 1.16 returns a Float, and the root CLAUDE.md says \"Montos en centavos enteros\".",
+      "expected_output": "Reviews only the HEAD commit, writes the findings to a markdown file outside the repository, prints its path, and sends nothing to GitHub.",
+      "expectations": [
+        "Resolves the target as the HEAD commit alone, not the branch against main.",
+        "Writes the file under $TMPDIR/review-changes/<repo>/ with the short sha in the name, not inside the repository.",
+        "Numbers the finding F1, quotes the CLAUDE.md rule under Fuente, and includes a diff block with the replacement.",
+        "Ends with the 💬 line and the 📄 path; asks no question and runs no gh pr review command.",
+        "Records prior-reviews and dedup as skipped:local."
+      ]
+    },
+    {
+      "id": 54,
+      "prompt": "/review-changes --local a1b2c3d..HEAD --out ./review.md, run from the repository root. The range has two commits.",
+      "expected_output": "Reviews the two-commit range, refuses the --out path because it is inside the repository, and writes to the default path instead.",
+      "expectations": [
+        "Resolves the target as git diff a1b2c3d..HEAD.",
+        "Says the --out path was refused because it is inside the repository.",
+        "Writes no file inside the repository; writes the report to the default $TMPDIR path and prints it."
+      ]
+    },
+    {
+      "id": 55,
+      "prompt": "Review PR #530 normally, without --local. A local report file from an earlier --local run of the same PR exists in $TMPDIR.",
+      "expected_output": "The normal flow is unchanged: the review runs dedupe, prints the resumen block with its question, and publishes nothing until the user answers. The local file is neither read nor rewritten.",
+      "expectations": [
+        "Runs steps 5a and 5b.",
+        "Ends with the three-line resumen block and a ❓ question.",
+        "Does not write or read any file under $TMPDIR/review-changes/."
+      ]
     }
   ]
 }

@@ -22,6 +22,27 @@ Use review-changes on the current diff
 
 Or by command name in hosts that expose one: `/review-changes`.
 
+Targets: a PR URL or `#123`, a branch, a commit hash, a range `a..b`, a path,
+or nothing for the working tree.
+
+### Self-review with `--local`
+
+```text
+/review-changes --local HEAD
+/review-changes --local origin/main..HEAD --out ~/reviews/mi-rama.md
+```
+
+Same review, nothing sent to GitHub, no question at the end. The findings go to
+a markdown file outside the repository — by default
+`$TMPDIR/review-changes/<repo>/<target>-<sha>.md` — numbered `F1`, `F2`, …, each
+with its location, failing case, source, fix, and a `diff` block when the fix is
+a line replacement. Hand the file to an agent to decide which findings apply
+and apply them.
+
+To have your coding agent offer this after every commit and before every PR,
+tell it: *implement the workflow in `AUTOREVIEW.md`*. The file describes the
+flow and how to install it in the agent's instruction file.
+
 ## What it does differently
 
 | | |
@@ -369,6 +390,7 @@ severity marker, after the review is published.
 ```
 review-changes/
 ├── SKILL.md                      # process and output contract
+├── AUTOREVIEW.md                 # optional self-review flow for a coding agent
 ├── reference/
 │   ├── project-rules.md          # rule discovery and precedence
 │   ├── verify.md                 # adversarial pass, discards only
@@ -376,6 +398,7 @@ review-changes/
 │   ├── prior-reviews.md          # our own earlier threads, and what the author replied
 │   ├── existing-comments.md      # dedupe against other reviewers
 │   ├── comment-form.md           # shape of posted text
+│   ├── local-mode.md             # --local: the report file an agent applies
 │   ├── correctness.md            # logic errors and broken callers, every behavior diff
 │   ├── tests.md                  # behavior no test pins, tests weakened by the diff
 │   ├── gates.md                  # CI, coverage, and mocks that go green while broken
@@ -386,7 +409,7 @@ review-changes/
 │   └── security.md               # authz, injection, secrets
 ├── scripts/post_review.py        # deterministic publisher
 ├── tests/test_post_review.py     # 26 tests over the publisher, gh stubbed
-├── evals/evals.json              # 52 scenarios
+├── evals/evals.json              # 55 scenarios
 └── agents/openai.yaml            # host adapter
 ```
 
@@ -403,7 +426,7 @@ are expensive to get wrong — a comment is never posted twice, and the same hea
 commit is never approved twice — plus round numbering, thread resolution, and
 the flag combinations the publisher refuses.
 
-`evals/evals.json` is a different thing: 46 declarative scenarios describing what
+`evals/evals.json` is a different thing: 55 declarative scenarios describing what
 the skill should do. The repository has no eval runner, so they are read, not
 executed.
 
