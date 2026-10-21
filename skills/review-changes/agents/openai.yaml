@@ -9,6 +9,8 @@ policy:
   write_scopes:
     - github_pull_request_review_comment
     - github_pull_request_review_approve
+    # --local only: one markdown report outside the repository.
+    - local_report_file_outside_repository
   gated_actions:
     # Only for a diff that changes no behavior, and only after the user's
     # explicit go on the printed body. Never under --dry-run.
