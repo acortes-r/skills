@@ -39,6 +39,10 @@ with its location, failing case, source, fix, and a `diff` block when the fix is
 a line replacement. Hand the file to an agent to decide which findings apply
 and apply them.
 
+To have your coding agent offer this after every commit and before every PR,
+tell it: *implement the workflow in `AUTOREVIEW.md`*. The file describes the
+flow and how to install it in the agent's instruction file.
+
 ## What it does differently
 
 | | |
@@ -386,6 +390,7 @@ severity marker, after the review is published.
 ```
 review-changes/
 ├── SKILL.md                      # process and output contract
+├── AUTOREVIEW.md                 # optional self-review flow for a coding agent
 ├── reference/
 │   ├── project-rules.md          # rule discovery and precedence
 │   ├── verify.md                 # adversarial pass, discards only
