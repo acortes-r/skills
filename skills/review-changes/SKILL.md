@@ -133,6 +133,7 @@ Everything else is a normal review. Read only the profiles the diff needs.
 | any file that changes behavior | `reference/correctness.md` — always |
 | application code that changes runtime behavior | `reference/tests.md` |
 | CI or deploy definitions, test or coverage config, shared mocks and fixtures, skip markers | `reference/gates.md` — at any size |
+| an `openspec/changes/` directory exists in the repository | `reference/spec.md` — it decides whether a change governs this diff |
 | `migrations/`, `schema.rb`, `*.sql`, `prisma/`, `alembic/` | `reference/migrations.md` — always, this is where data is lost |
 | `*.tsx`, `*.jsx`, `*.vue`, `*.svelte`, `*.css`, components | `reference/frontend.md` |
 | controllers, services, jobs, endpoints, queries, serializers | `reference/backend.md` |
@@ -151,7 +152,8 @@ A candidate needs three things or it is not written down:
 3. the fix
 
 A rule violation additionally quotes the exact rule text and its source file
-and heading.
+and heading. A spec finding quotes the scenario, requirement, or task line the
+same way.
 
 Do not write candidates for: style the configured linter already reports,
 pre-existing issues the diff does not worsen, missing future consumers, or
@@ -429,6 +431,7 @@ The report is these eight parts, in this order:
 | correctness | ran | 5 símbolos cambiados, 12 llamadores revisados |
 | tests | ran | 2 casos sin test |
 | gates | skipped | sin CI ni configuración de tests en el diff |
+| spec | ran | add-partial-refunds: 1 escenario contradicho, 1 comportamiento no pedido |
 | migrations | ran | — |
 | frontend | skipped | sin archivos de UI en el diff |
 | security | not-run | — |

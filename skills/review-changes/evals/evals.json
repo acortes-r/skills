@@ -568,6 +568,18 @@
         "Names the real failure that now goes green: a failing spec no longer fails the ci check.",
         "Rates the finding 🔴, because a required check on the default branch can no longer fail."
       ]
+    },
+    {
+      "id": 51,
+      "prompt": "Review the current branch, add-partial-refunds. openspec/changes/add-partial-refunds/ has a scenario \"WHEN a refund of 300 is issued on a charge of 1000 THEN the charge state is partially_refunded\", a tasks.md with \"- [x] 2.3 Notify the customer by email\", and a design.md deciding \"Refunds are processed synchronously, not in a job.\" The diff sets the state to refunded on any refund, sends no email anywhere, silently ignores refunds of amount 0, and processes refunds synchronously.",
+      "expected_output": "The spec profile finds the change from the branch name, reports the contradicted scenario and the checked task with no work, asks about the unrequested zero-amount rule, and does not suggest moving refunds to a job.",
+      "expectations": [
+        "Records spec as ran with the change name add-partial-refunds.",
+        "Reports the refunded-vs-partially_refunded contradiction as 🟠, quoting the scenario verbatim.",
+        "Reports task 2.3 as marked done with no email sent in the diff or on the base branch.",
+        "Reports the zero-amount early return as a 🔵 that asks whether it is intended.",
+        "Discards any candidate that only proposes processing refunds in a background job, citing design.md."
+      ]
     }
   ]
 }
