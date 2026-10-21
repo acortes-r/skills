@@ -16,9 +16,8 @@ queries, or middleware.
 - A required request field added without a default or migration path
 - Error responses that leak internals or lose the error class
 
-**Correctness**
-- Nil, empty-collection, and boundary cases on paths the diff introduces
-- Off-by-one and inclusive/exclusive bounds in pagination, ranges, slicing
+**Correctness** (generic logic errors live in `correctness.md`)
+- Off-by-one and inclusive/exclusive bounds in pagination
 - Time zone and DST handling where a date crosses a boundary
 - Float arithmetic on money
 - Concurrency: read-modify-write without a lock, non-atomic counters, a check

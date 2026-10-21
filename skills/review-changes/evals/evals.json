@@ -535,6 +535,16 @@
         "Reports lib/billing/invoice.rb as a 🟠 rule violation quoting \"Montos en centavos enteros, nunca Float.\"",
         "Does not record project-rules as not-run:no-project-rules-found."
       ]
+    },
+    {
+      "id": 48,
+      "prompt": "Review the current branch. The diff changes lib/fares/rounding.rb so that round_fare(amount, mode) now takes (mode, amount). Two callers in app/services/quote.rb and app/jobs/reprice_job.rb, neither in the diff, still pass (amount, mode).",
+      "expected_output": "The correctness profile runs even though lib/ matches no stack profile, finds both stale callers by grep, and reports the break on the changed signature line.",
+      "expectations": [
+        "Records correctness as ran in the ledger, with the count of callers checked.",
+        "Names app/services/quote.rb and app/jobs/reprice_job.rb as broken callers.",
+        "Anchors the finding on the changed line in lib/fares/rounding.rb, not on a file outside the diff."
+      ]
     }
   ]
 }
