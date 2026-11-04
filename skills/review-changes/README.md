@@ -420,14 +420,14 @@ review-changes/
 │   ├── frontend.md               # client state, a11y, weight
 │   └── security.md               # authz, injection, secrets
 ├── scripts/post_review.py        # deterministic publisher
-├── tests/test_post_review.py     # 26 tests over the publisher, gh stubbed
-├── evals/evals.json              # 55 scenarios
+├── tests/test_post_review.py     # 30 tests over the publisher, gh stubbed
+├── evals/evals.json              # 62 scenarios
 └── agents/openai.yaml            # host adapter
 ```
 
 ## Tests
 
-The publisher has 26 tests. No network, no dependencies, no test runner:
+The publisher has 30 tests. No network, no dependencies, no test runner:
 
 ```bash
 python3 skills/review-changes/tests/test_post_review.py
@@ -438,7 +438,7 @@ are expensive to get wrong — a comment is never posted twice, and the same hea
 commit is never approved twice — plus round numbering, thread resolution, and
 the flag combinations the publisher refuses.
 
-`evals/evals.json` is a different thing: 55 declarative scenarios describing what
+`evals/evals.json` is a different thing: 62 declarative scenarios describing what
 the skill should do. The repository has no eval runner, so they are read, not
 executed.
 
