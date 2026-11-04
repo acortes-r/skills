@@ -6,7 +6,7 @@ compatibility: Requires git. Pull-request features require an authenticated GitH
 allowed-tools: Read, Grep, Glob, Bash, Agent
 metadata:
   version: 0.7.0
-  review_event: COMMENT, or APPROVE on a diff that changes no behavior
+  review_event: COMMENT, or APPROVE when no 🔴 or 🟠 survives at full coverage
   never_emits: REQUEST_CHANGES
   approves_only: after an explicit user go, never on its own
   posted_language: es
@@ -50,9 +50,9 @@ the review outcome.
 - Nothing reaches GitHub without an answer to the resumen block's question.
   Every run is read-only until then, so there is no flag to make it so.
 - An approval is never automatic, and it is only ever offered when one of two
-  things is true: the diff changes no behavior, or the review ran to completion
-  and no finding survived. Reduced coverage means the approval is not offered
-  at all.
+  things is true: the diff changes no behavior, or the review ran with full
+  coverage and every surviving finding is a 🔵, with no open thread still
+  pending. Reduced coverage means the approval is not offered at all.
 - Never call `gh pr review --approve`, `--request-changes`, `gh pr merge`, or
   `gh pr close`. The one approval path is the publisher in step 7.
 - Read-only. Never edit, create, or delete repository files. The writes are the
@@ -318,7 +318,7 @@ one or the other is enough to know whether anything is waiting on the user.
 ```
 💬 7 comentarios: 1 🔴 critical, 2 🟠 important, 4 🔵 suggestion.
 🚫 Se puede aprobar: no — hay 1 critical.
-❓ ¿Publico los 7 comentarios?
+❓ ¿Publico la Ronda 1 con 7 comentarios?
 ```
 
 ```

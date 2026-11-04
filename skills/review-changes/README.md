@@ -67,7 +67,7 @@ repeated at the top of the report:
 ```
 💬 7 comentarios: 1 🔴 critical, 2 🟠 important, 4 🔵 suggestion.
 🚫 Se puede aprobar: no — hay 1 critical.
-❓ ¿Publico los 7 comentarios?
+❓ ¿Publico la Ronda 1 con 7 comentarios?
 ```
 
 ```
