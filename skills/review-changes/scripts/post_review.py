@@ -12,13 +12,15 @@ Invariants enforced here rather than left to the caller:
     body either.
   * The same head commit is never approved twice, and never gets two round
     summaries.
-  * Every review body opens with its round, `Ronda N`, so the author can tell
-    a re-review ran. N is derived from the reviews already on the PR; no state
+  * Every review body opens with its round and the head commit it reviewed,
+    `Ronda N (abc1234)`, so the author can tell a re-review ran and on which
+    push. N is derived from the reviews already on the PR; no state
     is kept anywhere else.
   * Every inline target is validated against the diff before posting, so a
     finding anchored outside a hunk degrades into the review body instead of
     failing the whole review with a 422.
-  * A finding whose path and opening text were already posted is skipped, so
+  * A finding whose path and opening text (what fails and the failing case,
+    the prose before any suggestion block) were already posted is skipped, so
     retrying after a partial failure does not duplicate comments, and a
     re-review does not repost a comment whose code has since moved lines.
   * A thread is resolved only when it is still open and this account opened it
@@ -141,8 +143,10 @@ def commentable_lines(patch):
     line = 0
     for raw in patch.splitlines():
         if raw.startswith("+++ "):
-            candidate = raw[6:]
-            path = None if candidate in ("dev/null", "") else candidate
+            candidate = raw[4:].strip()
+            if candidate.startswith("b/"):
+                candidate = candidate[2:]
+            path = None if candidate in ("/dev/null", "") else candidate
             continue
         if raw.startswith("@@"):
             found = HUNK.match(raw)
@@ -175,14 +179,29 @@ def first_line(body):
     return lines[0] if lines else ""
 
 
+def opening(body):
+    """The prose before any suggestion block: what fails, then the failing case.
+
+    Both lines are needed. A rule violation opens with the quoted rule, so two
+    violations of one rule in one file differ only on the second line.
+    """
+    prose = []
+    for line in (body or "").splitlines():
+        if line.lstrip().startswith("```"):
+            break
+        if line.strip():
+            prose.append(line.strip())
+    return "\n".join(prose[:2])
+
+
 def posted_signatures(comments):
-    """{(path, first_body_line)} for findings this PR already carries.
+    """{(path, opening)} for findings this PR already carries.
 
     The line number is deliberately not part of the key. Between two runs of a
     review the code moves, so the same finding comes back anchored somewhere
     else; keying on the line would let it be posted a second time.
     """
-    return {(item.get("path"), first_line(item.get("body")))
+    return {(item.get("path"), opening(item.get("body")))
             for item in comments}
 
 
@@ -245,15 +264,18 @@ def viewer_login():
 def our_reviews(repo, pr, login):
     """Reviews this account already left on the PR.
 
-    Fatal when unreadable: without them the round number is a guess and an
-    approval could be duplicated, neither of which can be taken back.
+    Fatal when unreadable, and fatal without our login: without them the round
+    number counts other reviewers' reviews and their approval passes for ours,
+    neither of which can be taken back.
     """
+    if not login:
+        fail("could not read the login this run publishes as. Nothing sent.")
     try:
         raw = gh(["api", f"repos/{repo}/pulls/{pr}/reviews", "--paginate"])
     except RuntimeError as err:
         fail(f"could not read existing reviews ({err}). Nothing sent.")
     return [item for item in json.loads(raw or "[]")
-            if not login or (item.get("user") or {}).get("login") == login]
+            if (item.get("user") or {}).get("login") == login]
 
 
 def is_round(review):
@@ -303,8 +325,11 @@ def anchor(path, line):
     return f"`{path}:{line}`" if line is not None else f"`{path}`"
 
 
-def round_body(number, new_lines, summary, notes=None, approving=False):
+def round_body(number, new_lines, summary, notes=None, approving=False, sha=""):
     """The round's review body, or "" when an approval has nothing to say.
+
+    The heading names the head commit reviewed, short and bare so GitHub links
+    it, so the author can tell which push a round looked at.
 
     Sections with nothing in them are left out. An approval with nothing new,
     nothing resolved and no notes goes in bare: the green check already says
@@ -314,9 +339,12 @@ def round_body(number, new_lines, summary, notes=None, approving=False):
     if approving and not new_lines and not resolved and not notes:
         return ""
 
-    heading = f"{ROUND_PREFIX}{number}"
+    qualifiers = [sha[:7]] if sha else []
     if summary["parcial"]:
-        heading += f" (revisión parcial: {summary['parcial']})"
+        qualifiers.append(f"revisión parcial: {summary['parcial']}")
+    heading = f"{ROUND_PREFIX}{number}"
+    if qualifiers:
+        heading += f" ({', '.join(qualifiers)})"
 
     if notes:
         plural = "notas" if len(notes) != 1 else "nota"
@@ -363,7 +391,7 @@ def split_findings(findings, targets, posted):
             print("post_review: skipping a finding with no path or no body",
                   file=sys.stderr)
             continue
-        if (path, first_line(body)) in posted:
+        if (path, opening(body)) in posted:
             skipped += 1
             continue
         if line is not None and (path, int(line)) in targets:
@@ -516,7 +544,8 @@ def run_approve(args):
 
     number = next_round(reviews)
     payload = {"event": APPROVE_EVENT}
-    body = round_body(number, new_lines, summary, notes=notes, approving=True)
+    body = round_body(number, new_lines, summary, notes=notes, approving=True,
+                      sha=sha)
     if body:
         payload["body"] = body
     if inline:
@@ -620,7 +649,7 @@ def main():
     payload = None
     if new_lines or not round_at_head(reviews, sha):
         payload = {"event": REVIEW_EVENT,
-                   "body": round_body(number, new_lines, summary),
+                   "body": round_body(number, new_lines, summary, sha=sha),
                    "comments": inline}
         if sha:
             payload["commit_id"] = sha

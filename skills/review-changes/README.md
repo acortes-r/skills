@@ -25,6 +25,13 @@ Or by command name in hosts that expose one: `/review-changes`.
 Targets: a PR URL or `#123`, a branch, a commit hash, a range `a..b`, a path,
 or nothing for the working tree.
 
+The review sizes itself. A change whose wrong version fails loudly where it is
+made (an exception at the changed line, a test that runs it, a change on
+screen) takes a **lite** pass: correctness, tests, and project rules, verified
+inline. Migrations, CI gates, auth, money, public contracts, silent failure
+paths, and 200+ executable lines take the **full** pass. `--depth full` forces
+it.
+
 ### Self-review with `--local`
 
 ```text
@@ -36,8 +43,10 @@ Same review, nothing sent to GitHub, no question at the end. The findings go to
 a markdown file outside the repository — by default
 `$TMPDIR/review-changes/<repo>/<target>-<sha>.md` — numbered `F1`, `F2`, …, each
 with its location, failing case, source, fix, and a `diff` block when the fix is
-a line replacement. Hand the file to an agent to decide which findings apply
-and apply them.
+a line replacement. Each finding also carries a tipo next to its severity:
+`auto` (a concrete fix, no choice to make), `manual` (needs a decision), or
+`aviso` (nothing to apply). Hand the file to an agent to decide which findings
+apply and apply them.
 
 To have your coding agent offer this after every commit and before every PR,
 tell it: *implement the workflow in `AUTOREVIEW.md`*. The file describes the
@@ -52,10 +61,11 @@ flow and how to install it in the agent's instruction file.
 | **Adversarial verification** | A second pass tries to refute every candidate and can only confirm, adjust, or discard. It can never add a finding. |
 | **Never repeats itself** | On a re-review it finds its own earlier threads, reads what the author replied, and decides from that: fixed, does not apply, or still open. A comment it already made is never made again — not reworded, not at a new line after a rebase. |
 | **Deduped against other reviewers** | Collects existing inline threads, PR-level comments, and bot summaries — CodeRabbit, Codacy, Sonar, Copilot, humans — and drops findings already covered. Resolved threads stay closed. A finding dropped onto an **open** thread still counts as a problem: it withholds the approval instead of vanishing. |
-| **Every review is a round** | Each publish opens with `Ronda N` and lists, one line each, what it found, what was resolved since the last round, and what is still pending — so the author knows a review ran even when it adds no comment. Its own threads whose problem is gone get resolved in the same go. |
+| **Every review is a round** | Each publish opens with `Ronda N` and the commit it reviewed, and lists, one line each, what it found, what was resolved since the last round, and what is still pending — so the author knows a review ran even when it adds no comment. Its own threads whose problem is gone get resolved in the same go. |
 | **Never blocks a merge** | `REQUEST_CHANGES` is impossible by construction. The default event is `COMMENT`. |
 | **Docs-only diffs get approved, not peppered** | A change that alters no behavior — documentation, OpenSpec markdown, a comment-only edit to a code file — gets one `APPROVE` with the notes in its body instead of a wall of inline suggestions. Nothing worth saying means a bare approval, no body. It asks you first, every time. |
 | **The summary states the count and the question** | Every run reports how many comments there are by severity, whether the PR can be approved, and asks for the one thing a yes would authorise. |
+| **Review policy you own** | A `REVIEW.md` — the same file Claude Code Review reads — sets what to skip, what a severity means, and caps on suggestions. It is read from the base, so a PR cannot relax its own review, and the ledger counts every finding it removed or regraded. |
 | **Linters filter noise** | A finding the repository's configured and CI-enforced linter already reports is dropped and counted, not posted. |
 | **Visible coverage** | Every pass reports `ran`, `skipped:<reason>`, or `not-run:<reason>`. What was not reviewed is stated. |
 
@@ -67,7 +77,7 @@ repeated at the top of the report:
 ```
 💬 7 comentarios: 1 🔴 critical, 2 🟠 important, 4 🔵 suggestion.
 🚫 Se puede aprobar: no — hay 1 critical.
-❓ ¿Publico los 7 comentarios?
+❓ ¿Publico la Ronda 1 con 7 comentarios?
 ```
 
 ```
@@ -141,7 +151,7 @@ Every review this skill publishes is a round, numbered from the reviews this
 account already left on the PR. Nothing is stored locally.
 
 ```markdown
-Ronda 2. 1 comentario nuevo, ninguno bloquea el merge.
+Ronda 2 (a1b2c3d). 1 comentario nuevo, ninguno bloquea el merge.
 
 Nuevos:
 - `app/models/booking.rb:42` — importante: el monto negativo pasa la validación
@@ -184,7 +194,7 @@ file whose every added and removed line is a comment or a docstring.
 
 | Counts as documentation | Does not, and disqualifies the diff |
 |---|---|
-| `*.md`, `*.mdx`, `*.rst`, `*.adoc`, `*.txt` | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursor/rules/*`, `CONTRIBUTING.md`, `docs/adr/**` — rule contracts, not prose |
+| `*.md`, `*.mdx`, `*.rst`, `*.adoc`, `*.txt` | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `CODING_STANDARDS.md`, `REVIEW.md`, `.cursor/rules/*`, `CONTRIBUTING.md`, `docs/adr/**` — rule contracts, not prose |
 | `openspec/**`, `docs/**` | `.github/workflows/*.yml`, `Dockerfile`, `Makefile`, `*.sql`, `package.json`, lockfiles, `.env*` |
 | `README*`, `CHANGELOG*`, `LICENSE*` | a comment that is a directive: `# rubocop:disable`, `// @ts-ignore`, `# noqa`, build tags |
 
@@ -209,7 +219,7 @@ approval, as one review:
 
 ```
 event: APPROVE
-body:  Ronda 1. 1 comentario nuevo, ninguno bloquea el merge. + Nuevos list
+body:  Ronda 1 (a1b2c3d). 1 comentario nuevo, ninguno bloquea el merge. + Nuevos list
 comments: the suggestions, anchored on their lines
 ```
 
@@ -246,7 +256,9 @@ Nothing is remembered between runs. Every disposition is re-derived from the PR
 itself, so an accepted rebuttal keeps being accepted without any local state.
 
 A rebase that moves every line does not cause reposts: an already-posted comment
-is matched by path and opening text, never by line number.
+is matched by path and opening text, never by line number. The opening text is
+the first two lines of prose, so two violations of one quoted rule in one file
+stay distinct.
 
 ## Publishing, and checking first with `--dry-run`
 
@@ -274,7 +286,7 @@ so it reports the real outcome rather than a guess:
 post_review: dry run. Payload that would be sent:
 {
   "event": "COMMENT",
-  "body": "Ronda 2. 3 comentarios nuevos, ninguno bloquea el merge.\n\nNuevos:\n- …",
+  "body": "Ronda 2 (a1b2c3d). 3 comentarios nuevos, ninguno bloquea el merge.\n\nNuevos:\n- …",
   "comments": [
     { "path": "app/models/user.rb", "line": 11, "side": "RIGHT", "body": "🟠 ..." }
   ]

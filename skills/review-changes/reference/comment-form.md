@@ -135,7 +135,7 @@ Every review this skill publishes carries the round body, built by
 lists, each left out when empty:
 
 ```markdown
-Ronda 2. 2 comentarios nuevos, ninguno bloquea el merge.
+Ronda 2 (a1b2c3d). 2 comentarios nuevos, ninguno bloquea el merge.
 
 Nuevos:
 - `app/models/booking.rb:42` — importante: el monto negativo pasa la validación
@@ -150,9 +150,11 @@ Pendientes:
 - `app/services/fare.rb:20` — redondeo con float, ya señalado por coderabbit (https://github.com/…)
 ```
 
-- The heading names the round and the count of new comments. Nothing new:
-  `Sin comentarios nuevos.`; nothing in any list: `Sin comentarios.` Reduced
-  coverage adds `(revisión parcial: <qué no corrió>)` after the number.
+- The heading names the round, the head commit it reviewed, and the count of
+  new comments. The commit is the short sha, bare so GitHub links it. Nothing
+  new: `Sin comentarios nuevos.`; nothing in any list: `Sin comentarios.`
+  Reduced coverage adds `revisión parcial: <qué no corrió>` inside the same
+  parentheses: `Ronda 2 (a1b2c3d, revisión parcial: security no corrió).`
 - Each item is `` `path:line` — `` and one clause, at the code's current line.
   Severity is a word — `crítico`, `importante`, `sugerencia` — never the
   emoji: the item is a summary, not the finding.
@@ -175,7 +177,7 @@ the approval already went through, and a suggestion block invites a change the
 merge no longer waits for.
 
 ```markdown
-Ronda 1. Solo documentación. 3 notas, ninguna bloquea.
+Ronda 1 (a1b2c3d). Solo documentación. 3 notas, ninguna bloquea.
 
 🔵 `openspec/specs/pagos.md` — el endpoint `POST /refunds` documentado no existe en el código.
 🔵 `docs/deploy.md` — la variable `REDIS_URL` quedó con el nombre viejo.

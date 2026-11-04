@@ -1,6 +1,6 @@
 interface:
   display_name: "Review Changes"
-  short_description: "Code review that loads the project's own rules, never blocks a merge, and approves only diffs that change no behavior"
+  short_description: "Code review that loads the project's own rules, never blocks a merge, and approves only when nothing blocking survives"
   default_prompt: "Use review-changes on the current diff. Publish findings as non-blocking suggestions."
 
 policy:
@@ -12,8 +12,9 @@ policy:
     # --local only: one markdown report outside the repository.
     - local_report_file_outside_repository
   gated_actions:
-    # Only for a diff that changes no behavior, and only after the user's
-    # explicit go on the printed body. Never under --dry-run.
+    # Only for a diff that changes no behavior, or one where only suggestions
+    # survive a full-coverage review; always after the user's explicit go on
+    # the printed body. Never under --dry-run.
     - pull_request_approve
   forbidden_actions:
     - pull_request_request_changes

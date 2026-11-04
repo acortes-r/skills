@@ -131,6 +131,27 @@ def test_moved_finding_is_not_reposted():
           and not sent, out)
 
 
+def test_second_violation_of_the_same_rule_is_published():
+    """Two violations of one rule share the quoted rule line, not the failure."""
+    rule = '🟠 `CLAUDE.md` · Errores: "toda llamada externa lleva timeout".'
+    existing = [{"path": "app/models/user.rb", "line": 42, "id": 112,
+                 "body": rule + "\nEste `Faraday.get` no lo tiene.",
+                 "in_reply_to_id": None}]
+    findings = write("f_rule.json", [{"path": "app/models/user.rb", "line": 50,
+                                      "body": rule + "\nEste `Net::HTTP.get` no lo tiene."}])
+    out = run(["--findings", findings, "--dry-run"], comments=existing)
+    check("a second violation of an already-cited rule is published",
+          "inline=1" in out and "already-posted=0" in out, out)
+
+
+def test_a_deleted_file_offers_no_targets():
+    patch = ("--- a/app/legacy.rb\n+++ /dev/null\n@@ -1,2 +0,0 @@\n"
+             "-def old\n-end\n" + DIFF)
+    targets = mod.commentable_lines(patch)
+    check("a deleted file adds no path to the targets",
+          {path for path, _ in targets} == {"app/models/user.rb"}, targets)
+
+
 def test_new_finding_is_published():
     findings = write("f2.json", [{"path": "app/models/user.rb", "line": 51,
                                   "body": "🔵 Extrae el timeout a constante."}])
@@ -182,8 +203,8 @@ def test_first_round_lists_new_findings_without_emoji():
     sent = []
     out = run(["--findings", findings], sent=sent)
     body = sent[0]["body"] if sent else ""
-    check("the first round names Ronda 1 and lists Nuevos in words",
-          body.startswith("Ronda 1. 1 comentario nuevo")
+    check("the first round names Ronda 1, its commit, and lists Nuevos in words",
+          body.startswith("Ronda 1 (abc1234). 1 comentario nuevo")
           and "- `app/models/user.rb:51` — importante: `user` puede ser nil" in body
           and "Resueltos" not in body and "Pendientes" not in body
           and "🟠" not in body, out)
@@ -203,7 +224,7 @@ def test_round_number_counts_only_our_rounds():
               reviews=reviews, sent=sent)
     body = sent[0]["body"] if sent else ""
     check("a reply's empty review and another account's review are not rounds",
-          body.startswith("Ronda 3. Sin comentarios nuevos.")
+          body.startswith("Ronda 3 (abc1234). Sin comentarios nuevos.")
           and "Pendientes:\n- `a.rb:3` — x" in body, out)
 
 
@@ -222,7 +243,7 @@ def test_partial_round_says_so():
               sent=sent)
     check("a partial round names what did not run",
           sent and sent[0]["body"]
-          == "Ronda 1 (revisión parcial: security no corrió). Sin comentarios.", out)
+          == "Ronda 1 (abc1234, revisión parcial: security no corrió). Sin comentarios.", out)
 
 
 def test_degraded_finding_lives_in_the_list():
@@ -315,7 +336,7 @@ def test_approve_carries_a_suggestion_inline():
           sole.get("event") == "APPROVE"
           and sole.get("comments", [{}])[0].get("line") == 51
           and sole.get("body") == (
-              "Ronda 1. 1 comentario nuevo, ninguno bloquea el merge.\n\n"
+              "Ronda 1 (abc1234). 1 comentario nuevo, ninguno bloquea el merge.\n\n"
               "Nuevos:\n- `app/models/user.rb:51` — sugerencia: "
               "Extrae el timeout a constante."),
           out)
@@ -332,7 +353,7 @@ def test_approve_with_resolved_threads_lists_them():
     review = next((item for item in sent if "event" in item), {})
     check("an approval after fixes names the round and what was resolved",
           review.get("event") == "APPROVE"
-          and review.get("body") == ("Ronda 2. Sin comentarios nuevos.\n\n"
+          and review.get("body") == ("Ronda 2 (abc1234). Sin comentarios nuevos.\n\n"
                                      "Resueltos desde la ronda anterior:\n"
                                      "- `a.rb:1` — N+1")
           and {"resolve": "T1"} in sent, out)
@@ -392,6 +413,30 @@ def test_approve_refuses_findings_and_notes_together():
                "--notes", write("n.json", NOTES)], sent=sent)
     check("approve takes findings or notes, not both",
           "not both" in out and "EXIT 1" in out and not sent, out)
+
+
+def without_login(argv, reviews):
+    """Run with the publishing account unreadable."""
+    original, mod.viewer_login = mod.viewer_login, lambda: ""
+    try:
+        sent = []
+        return run(argv, reviews=reviews, sent=sent), sent
+    finally:
+        mod.viewer_login = original
+
+
+def test_unknown_login_sends_nothing():
+    """Without our login, someone else's reviews would pass for ours."""
+    theirs = [{"state": "APPROVED", "commit_id": HEAD,
+               "user": {"login": "otra-cuenta-ficticia"}, "body": ""}]
+    findings = write("f_login.json", [{"path": "app/models/user.rb", "line": 51,
+                                       "body": "🟠 `user` puede ser nil."}])
+    out, sent = without_login(["--findings", findings], theirs)
+    check("an unknown login stops a review before sending",
+          "EXIT 1" in out and "login" in out and not sent, out)
+    out, sent = without_login(["--approve"], theirs)
+    check("an unknown login stops an approval before sending",
+          "EXIT 1" in out and "login" in out and not sent, out)
 
 
 def test_notes_require_approve():

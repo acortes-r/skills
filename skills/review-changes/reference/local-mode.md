@@ -23,8 +23,10 @@ ${TMPDIR:-/tmp}/review-changes/<repo>/<target>-<short sha>.md
 ```
 
 - `<repo>` is the basename of the repository root.
-- `<target>` is the PR number as `pr-123`, the branch name with `/` turned into
-  `-`, the commit or range as written, or `worktree` for an empty argument.
+- `<target>` is the PR number as `pr-123`, the branch name, the commit or range
+  as written, or `worktree` for an empty argument. Every `/` becomes `-`, so
+  the file stays directly under `<repo>/`: `origin/main...HEAD` is
+  `origin-main...HEAD`.
 - `<short sha>` is the head commit reviewed. Uncommitted changes add `-dirty`.
 
 `--out <path>` replaces the default. A path inside the repository is refused:
@@ -55,7 +57,7 @@ preferencia. Ningún hallazgo bloquea: decidir cuáles aplicar es tuyo.
 
 ## Hallazgos
 
-### F1 · 🟠 important · `app/services/refund.rb:42`
+### F1 · 🟠 important · auto · `app/services/refund.rb:42`
 
 **Qué falla:** <summary, one sentence>
 **Cuándo:** <failing input → wrong result>
@@ -83,6 +85,17 @@ Rules for each finding:
 
 - Number them `F1`, `F2`, … in severity order, critical first. The numbers are
   how the user picks which to apply.
+- Give each one a **tipo** after its severity. Severity says how urgent it is;
+  tipo says what applying it takes:
+
+  | Tipo | When |
+  |---|---|
+  | `auto` | The fix is concrete and stays on the cited lines or the named test file: a `diff` block, or a change **Fix** spells out exactly. Applying it needs no choice. |
+  | `manual` | Applying it needs a decision the finding cannot make: two valid fixes, a change beyond the cited lines, or one that alters a contract. **Fix** names the decision. |
+  | `aviso` | Nothing to apply: a deployment note, a residual risk, behavior nobody asked for that the author may keep. |
+
+  When two tipos fit, pick the one that asks more of the reader: `manual`
+  over `auto`.
 - Include the `diff` block only when the fix is a line replacement, as in
   `reference/comment-form.md`'s suggestion blocks, with the file's exact
   indentation. Otherwise **Fix** says it in words.
@@ -98,7 +111,7 @@ Print the resumen block's first line, then the file's absolute path:
 
 ```
 💬 3 comentarios: 1 🟠 important, 2 🔵 suggestion.
-📄 /var/folders/…/review-changes/skills/a1b2c3d-9f8e7d6.md
+📄 /var/folders/…/review-changes/personal-skills/a1b2c3d-9f8e7d6.md
 ```
 
 There is no question and no line 2: nothing would be published or approved.

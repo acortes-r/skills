@@ -38,7 +38,8 @@ them as another reviewer and let `existing-comments.md` handle them.
 
 Command fails or returns no login: record `reduced-context:no-self-identity`,
 treat no thread as ours, and let every finding fall through to the generic
-dedupe. Never guess the identity from the comment bodies alone.
+dedupe. Never guess the identity from the comment bodies alone. The publisher
+needs the login too, so this run reports locally and sends nothing.
 
 ## Collect
 
