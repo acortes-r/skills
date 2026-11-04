@@ -100,7 +100,7 @@ Print the resumen block's first line, then the file's absolute path:
 
 ```
 💬 3 comentarios: 1 🟠 important, 2 🔵 suggestion.
-📄 /var/folders/…/review-changes/skills/a1b2c3d-9f8e7d6.md
+📄 /var/folders/…/review-changes/personal-skills/a1b2c3d-9f8e7d6.md
 ```
 
 There is no question and no line 2: nothing would be published or approved.
