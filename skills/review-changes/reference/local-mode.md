@@ -23,8 +23,10 @@ ${TMPDIR:-/tmp}/review-changes/<repo>/<target>-<short sha>.md
 ```
 
 - `<repo>` is the basename of the repository root.
-- `<target>` is the PR number as `pr-123`, the branch name with `/` turned into
-  `-`, the commit or range as written, or `worktree` for an empty argument.
+- `<target>` is the PR number as `pr-123`, the branch name, the commit or range
+  as written, or `worktree` for an empty argument. Every `/` becomes `-`, so
+  the file stays directly under `<repo>/`: `origin/main...HEAD` is
+  `origin-main...HEAD`.
 - `<short sha>` is the head commit reviewed. Uncommitted changes add `-dirty`.
 
 `--out <path>` replaces the default. A path inside the repository is refused:

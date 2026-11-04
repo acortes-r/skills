@@ -622,6 +622,16 @@
         "Ends with the three-line resumen block and a ❓ question.",
         "Does not write or read any file under $TMPDIR/review-changes/."
       ]
+    },
+    {
+      "id": 56,
+      "prompt": "/review-changes --local origin/main...HEAD, run before opening a pull request. The branch has three commits and one finding.",
+      "expected_output": "Reviews the branch from its merge base and writes the report directly under the repository's folder, with the slash in the target turned into a dash.",
+      "expectations": [
+        "Resolves the target as git diff origin/main...HEAD.",
+        "Names the file origin-main...HEAD-<short sha>.md directly under $TMPDIR/review-changes/<repo>/, creating no origin/ subdirectory.",
+        "Ends with the 💬 line and the 📄 path."
+      ]
     }
   ]
 }
