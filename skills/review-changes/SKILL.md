@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires git. Pull-request features require an authenticated GitHub CLI (gh 2.40+). Host must provide file-read, grep, and shell tools.
 allowed-tools: Read, Grep, Glob, Bash, Agent
 metadata:
-  version: 0.7.0
+  version: 0.8.0
   review_event: COMMENT, or APPROVE when no 🔴 or 🟠 survives at full coverage
   never_emits: REQUEST_CHANGES
   approves_only: after an explicit user go, never on its own

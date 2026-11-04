@@ -68,7 +68,7 @@ comes again after it. That is intended: each round is optional.
 
 When the user asks you to implement this workflow:
 
-1. **Check the skill.** `review-changes` must be installed at version 0.7.0 or
+1. **Check the skill.** `review-changes` must be installed at version 0.8.0 or
    later: its `SKILL.md` frontmatter has `version:`, and its body mentions
    `--local`. Older or missing: tell the user and stop.
 2. **Pick the instruction file** your harness loads on every session:
