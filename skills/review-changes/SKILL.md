@@ -3,7 +3,7 @@ name: review-changes
 description: Use when reviewing a diff, pull request, branch, commit, or uncommitted working-tree changes before merge — including requests to review a PR, re-review a PR after new commits, check what changed, audit a migration, check whether changes follow the project's own documented rules, or self-review a local commit into a markdown file an agent can apply (`--local`). Publishes findings as non-blocking GitHub suggestions, never repeats a comment it already made, and never requests changes. Ends every publishing run by asking what to do with what it found, and acts only on the answer.
 license: MIT
 compatibility: Requires git. Pull-request features require an authenticated GitHub CLI (gh 2.40+). Host must provide file-read, grep, and shell tools.
-allowed-tools: Read, Grep, Glob, Bash
+allowed-tools: Read, Grep, Glob, Bash, Agent
 metadata:
   version: 0.7.0
   review_event: COMMENT, or APPROVE on a diff that changes no behavior
