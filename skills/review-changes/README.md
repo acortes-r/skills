@@ -58,6 +58,7 @@ flow and how to install it in the agent's instruction file.
 | **Never blocks a merge** | `REQUEST_CHANGES` is impossible by construction. The default event is `COMMENT`. |
 | **Docs-only diffs get approved, not peppered** | A change that alters no behavior — documentation, OpenSpec markdown, a comment-only edit to a code file — gets one `APPROVE` with the notes in its body instead of a wall of inline suggestions. Nothing worth saying means a bare approval, no body. It asks you first, every time. |
 | **The summary states the count and the question** | Every run reports how many comments there are by severity, whether the PR can be approved, and asks for the one thing a yes would authorise. |
+| **Review policy you own** | A `REVIEW.md` — the same file Claude Code Review reads — sets what to skip, what a severity means, and caps on suggestions. It is read from the base, so a PR cannot relax its own review, and the ledger counts every finding it removed or regraded. |
 | **Linters filter noise** | A finding the repository's configured and CI-enforced linter already reports is dropped and counted, not posted. |
 | **Visible coverage** | Every pass reports `ran`, `skipped:<reason>`, or `not-run:<reason>`. What was not reviewed is stated. |
 
@@ -186,7 +187,7 @@ file whose every added and removed line is a comment or a docstring.
 
 | Counts as documentation | Does not, and disqualifies the diff |
 |---|---|
-| `*.md`, `*.mdx`, `*.rst`, `*.adoc`, `*.txt` | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursor/rules/*`, `CONTRIBUTING.md`, `docs/adr/**` — rule contracts, not prose |
+| `*.md`, `*.mdx`, `*.rst`, `*.adoc`, `*.txt` | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `CODING_STANDARDS.md`, `REVIEW.md`, `.cursor/rules/*`, `CONTRIBUTING.md`, `docs/adr/**` — rule contracts, not prose |
 | `openspec/**`, `docs/**` | `.github/workflows/*.yml`, `Dockerfile`, `Makefile`, `*.sql`, `package.json`, lockfiles, `.env*` |
 | `README*`, `CHANGELOG*`, `LICENSE*` | a comment that is a directive: `# rubocop:disable`, `// @ts-ignore`, `# noqa`, build tags |
 

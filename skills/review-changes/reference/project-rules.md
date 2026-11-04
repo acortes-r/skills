@@ -10,6 +10,7 @@ description: Project-rule discovery and precedence for `review-changes`.
 - Precedence
 - The `Reglas aplicables` table
 - Using linters as a noise filter
+- Review policy (`REVIEW.md`)
 - Rules that do not exist
 
 Use this profile only inside `review-changes`. It always runs, before any
@@ -90,6 +91,48 @@ automatically?
 
 Reporting what the linter already prints is the fastest way to get a review
 ignored.
+
+## Review policy (`REVIEW.md`)
+
+The rule files above say what correct code looks like. A `REVIEW.md` says how
+review behaves in this repository: which paths to skip, what a severity means,
+a cap on suggestions, the evidence a kind of finding needs. It is the file
+Claude Code Review reads, so one file tunes both.
+
+**Read it from the base**, never from the change: the PR's base branch, the
+merge base for a branch, the parent for a commit, `<a>` for a range, `HEAD` for
+the working tree. Use `git show <base>:<path>`. A diff that edits `REVIEW.md`
+is reviewed under the old policy, and the ledger says the new one was not
+applied. A pull request cannot relax its own review.
+
+**Placement.** A root `REVIEW.md` governs the whole diff. One in a
+subdirectory adds to it for files under that directory. In the root file, a
+line holding only `@<file>` includes that file, read from the base too; an
+`@` pointing at a level-1 file already read is not read twice.
+
+**Two kinds of line.**
+
+- A line about the code ("every change to `app/payments/` adds a test") is a
+  rule. It joins the `Reglas aplicables` table at level 1 and produces findings
+  in step 3, quoted like any rule.
+- A line about the review ("nothing under `src/gen/`", "naming is Nit at
+  most", "at most 3 suggestions", "behavior claims cite `file:line`") is
+  policy. It runs after verify, on the survivors: it removes or regrades them,
+  and never adds one.
+
+**Severity names.** Claude Code Review writes Important and Nit. Read
+Important as 🟠 at least (a 🔴 stays 🔴), and Nit as 🔵.
+
+**What it cannot change.** The invariants in `SKILL.md`, the verify discards,
+and the shape of posted text in `comment-form.md`. A policy line that asks for
+one of those is ignored and named in the ledger.
+
+**Count what it removed.** The ledger row `review-policy` gives how many
+findings each policy line removed or regraded, so a quiet review never looks
+cleaner than it was. A finding the policy removed is a routing decision, not
+reduced coverage: the approval stays available.
+
+No `REVIEW.md` on the base: record `review-policy: skipped:no-review-md`.
 
 ## Rules that do not exist
 
