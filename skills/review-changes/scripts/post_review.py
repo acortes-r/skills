@@ -261,15 +261,18 @@ def viewer_login():
 def our_reviews(repo, pr, login):
     """Reviews this account already left on the PR.
 
-    Fatal when unreadable: without them the round number is a guess and an
-    approval could be duplicated, neither of which can be taken back.
+    Fatal when unreadable, and fatal without our login: without them the round
+    number counts other reviewers' reviews and their approval passes for ours,
+    neither of which can be taken back.
     """
+    if not login:
+        fail("could not read the login this run publishes as. Nothing sent.")
     try:
         raw = gh(["api", f"repos/{repo}/pulls/{pr}/reviews", "--paginate"])
     except RuntimeError as err:
         fail(f"could not read existing reviews ({err}). Nothing sent.")
     return [item for item in json.loads(raw or "[]")
-            if not login or (item.get("user") or {}).get("login") == login]
+            if (item.get("user") or {}).get("login") == login]
 
 
 def is_round(review):

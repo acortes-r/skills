@@ -407,6 +407,30 @@ def test_approve_refuses_findings_and_notes_together():
           "not both" in out and "EXIT 1" in out and not sent, out)
 
 
+def without_login(argv, reviews):
+    """Run with the publishing account unreadable."""
+    original, mod.viewer_login = mod.viewer_login, lambda: ""
+    try:
+        sent = []
+        return run(argv, reviews=reviews, sent=sent), sent
+    finally:
+        mod.viewer_login = original
+
+
+def test_unknown_login_sends_nothing():
+    """Without our login, someone else's reviews would pass for ours."""
+    theirs = [{"state": "APPROVED", "commit_id": HEAD,
+               "user": {"login": "otra-cuenta-ficticia"}, "body": ""}]
+    findings = write("f_login.json", [{"path": "app/models/user.rb", "line": 51,
+                                       "body": "🟠 `user` puede ser nil."}])
+    out, sent = without_login(["--findings", findings], theirs)
+    check("an unknown login stops a review before sending",
+          "EXIT 1" in out and "login" in out and not sent, out)
+    out, sent = without_login(["--approve"], theirs)
+    check("an unknown login stops an approval before sending",
+          "EXIT 1" in out and "login" in out and not sent, out)
+
+
 def test_notes_require_approve():
     out = run(["--notes", write("n.json", NOTES)])
     check("--notes without --approve is refused",

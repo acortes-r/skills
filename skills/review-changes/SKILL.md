@@ -304,6 +304,7 @@ round this run would publish:
 | a round already went out at this head, nothing new | 📭 `Ronda <R-1> ya publicada en <short sha>. Nada que enviar.` |
 | already approved at this head commit | 📭 `Ya aprobado en <short sha>. Nada que enviar.` |
 | no PR context | 📭 `Sin contexto de PR: no puedo publicar ni aprobar.` |
+| our login unknown | 📭 `Sin login de la cuenta: no puedo publicar ni aprobar.` |
 | empty diff | 📭 `Nada que revisar.` |
 
 When the same yes also resolves threads, the question ends with
@@ -488,7 +489,7 @@ independent of session style.
 | Situation | Behavior |
 |---|---|
 | No `gh` | local diff review; `reduced-context:no-gh`; steps 5 and 7 `not-run:no-pr-context`; no approval is offered |
-| Our login unknown | `reduced-context:no-self-identity`; no thread counts as ours; step 5a `not-run`; findings fall through to 5b |
+| Our login unknown | `reduced-context:no-self-identity`; no thread counts as ours; step 5a `not-run`; findings fall through to 5b; the publisher refuses to send, so line 3 is 📭 |
 | No project rule files | `not-run:no-project-rules-found`; continue on the generic profiles |
 | GraphQL unavailable | REST review comments, resolution state unknown, recorded as such; no thread is resolved |
 | A profile cannot run | `not-run:<reason>` in the ledger; never folded into another profile |
