@@ -25,6 +25,13 @@ Or by command name in hosts that expose one: `/review-changes`.
 Targets: a PR URL or `#123`, a branch, a commit hash, a range `a..b`, a path,
 or nothing for the working tree.
 
+The review sizes itself. A change whose wrong version fails loudly where it is
+made (an exception at the changed line, a test that runs it, a change on
+screen) takes a **lite** pass: correctness, tests, and project rules, verified
+inline. Migrations, CI gates, auth, money, public contracts, silent failure
+paths, and 200+ executable lines take the **full** pass. `--depth full` forces
+it.
+
 ### Self-review with `--local`
 
 ```text

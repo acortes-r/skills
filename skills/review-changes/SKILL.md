@@ -75,7 +75,7 @@ Copy this and check items off as you go:
 Review progress:
 - [ ] 0. Project rules loaded
 - [ ] 1. Target and diff resolved
-- [ ] 2. Behavior classified and reference profiles routed
+- [ ] 2. Behavior classified, depth chosen, reference profiles routed
 - [ ] 3. Candidates found
 - [ ] 4. Candidates verified
 - [ ] 5a. Our earlier threads classified
@@ -97,8 +97,8 @@ Its output is required input for steps 3, 4, and 8.
 
 ## Step 1 — Resolve target and diff
 
-Read the argument text. Take out `--local` and `--out <path>` first: they pick
-the mode, not the target. Then resolve exactly one target:
+Read the argument text. Take out `--local`, `--out <path>`, and `--depth full`
+first: they pick the mode, not the target. Then resolve exactly one target:
 
 | Argument | Target |
 |---|---|
@@ -165,6 +165,34 @@ its dependency checks, and records `correctness` and `tests` as
 
 Record each profile as `ran` or `skipped:<reason>` in the ledger. Do not read
 profiles the diff does not touch.
+
+### Depth
+
+Size the review by consequence, not by line count: how far from the changed
+line would a wrong version show up?
+
+**Full** when any of these holds, or when `--depth full` was passed:
+
+- a migration, a gates file, or an OpenSpec change that governs the diff
+- auth, money, secrets, uploads, deserialization, or a dependency manifest
+- a public contract: an endpoint, a serializer, an event payload, an exported
+  interface
+- a **silent** failure path: data written, a job or queue, a cache, an
+  external call — a wrong version would surface somewhere else, later
+- 200 or more changed executable lines, tests and whole-file deletions not
+  counted, or any large deletion
+
+**Lite** otherwise: every wrong version fails **loudly** where it is made — an
+exception or type error at the changed line, a test that runs it, a change on
+screen. Lite runs `correctness`, `tests` when routed, project rules, and the
+review policy; the other code profiles record `skipped:lite`, and verify runs
+inline. A docs-only diff and a dependency bump have their own path and take no
+depth.
+
+The ledger row `depth` names the depth and the reason: the first full trigger
+that matched, or `todo falla a la vista`. `skipped:lite` is a routing decision,
+like a profile the diff does not touch: coverage stays full and the approval
+stays available.
 
 ## Step 3 — Find candidates
 
@@ -459,6 +487,7 @@ The report is these eight parts, in this order:
 | pass | estado | nota |
 |---|---|---|
 | project-rules | ran | 6 reglas aplicables |
+| depth | full | job nuevo en app/jobs/refund_job.rb: falla silenciosa |
 | docs-only | skipped | behavior-change: app/models/user.rb |
 | correctness | ran | 5 símbolos cambiados, 12 llamadores revisados |
 | tests | ran | 2 casos sin test |
