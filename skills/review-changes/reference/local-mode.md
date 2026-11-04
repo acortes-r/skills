@@ -57,7 +57,7 @@ preferencia. Ningún hallazgo bloquea: decidir cuáles aplicar es tuyo.
 
 ## Hallazgos
 
-### F1 · 🟠 important · `app/services/refund.rb:42`
+### F1 · 🟠 important · auto · `app/services/refund.rb:42`
 
 **Qué falla:** <summary, one sentence>
 **Cuándo:** <failing input → wrong result>
@@ -85,6 +85,17 @@ Rules for each finding:
 
 - Number them `F1`, `F2`, … in severity order, critical first. The numbers are
   how the user picks which to apply.
+- Give each one a **tipo** after its severity. Severity says how urgent it is;
+  tipo says what applying it takes:
+
+  | Tipo | When |
+  |---|---|
+  | `auto` | The fix is concrete and stays on the cited lines or the named test file: a `diff` block, or a change **Fix** spells out exactly. Applying it needs no choice. |
+  | `manual` | Applying it needs a decision the finding cannot make: two valid fixes, a change beyond the cited lines, or one that alters a contract. **Fix** names the decision. |
+  | `aviso` | Nothing to apply: a deployment note, a residual risk, behavior nobody asked for that the author may keep. |
+
+  When two tipos fit, pick the one that asks more of the reader: `manual`
+  over `auto`.
 - Include the `diff` block only when the fix is a line replacement, as in
   `reference/comment-form.md`'s suggestion blocks, with the file's exact
   indentation. Otherwise **Fix** says it in words.

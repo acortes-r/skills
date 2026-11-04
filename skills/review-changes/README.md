@@ -36,8 +36,10 @@ Same review, nothing sent to GitHub, no question at the end. The findings go to
 a markdown file outside the repository — by default
 `$TMPDIR/review-changes/<repo>/<target>-<sha>.md` — numbered `F1`, `F2`, …, each
 with its location, failing case, source, fix, and a `diff` block when the fix is
-a line replacement. Hand the file to an agent to decide which findings apply
-and apply them.
+a line replacement. Each finding also carries a tipo next to its severity:
+`auto` (a concrete fix, no choice to make), `manual` (needs a decision), or
+`aviso` (nothing to apply). Hand the file to an agent to decide which findings
+apply and apply them.
 
 To have your coding agent offer this after every commit and before every PR,
 tell it: *implement the workflow in `AUTOREVIEW.md`*. The file describes the

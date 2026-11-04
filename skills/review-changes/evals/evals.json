@@ -632,6 +632,17 @@
         "Names the file origin-main...HEAD-<short sha>.md directly under $TMPDIR/review-changes/<repo>/, creating no origin/ subdirectory.",
         "Ends with the 💬 line and the 📄 path."
       ]
+    },
+    {
+      "id": 57,
+      "prompt": "/review-changes --local HEAD. HEAD changes app/services/refund.rb: a nil `order` now raises on line 18, a refund of 0 is accepted on line 30 where the product could either reject or record it, and a new job enqueued on line 44 will run before the migration on deploy.",
+      "expected_output": "Writes the local report with each finding carrying a tipo after its severity: auto for the nil guard, manual for the refund-of-0 choice, aviso for the deploy ordering.",
+      "expectations": [
+        "Each finding heading reads `F<n> · <severity> · <tipo> · <path:line>`.",
+        "The nil guard is `auto` and carries a diff block.",
+        "The refund of 0 is `manual` and its Fix names the decision: reject or record.",
+        "The deploy ordering is `aviso` and asks for no code change."
+      ]
     }
   ]
 }

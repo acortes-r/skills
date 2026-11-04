@@ -31,20 +31,26 @@ comes again after it. That is intended: each round is optional.
    review it. No subagent tool: run it inline and say so in one line.
 3. **Read the report.** The run ends with a `📄 <path>` line. Read that file.
    Its findings are numbered `F1`, `F2`, … and each one carries its location,
-   failing case, source, fix, and confidence.
+   failing case, source, fix, confidence, and tipo: `auto`, `manual`, or
+   `aviso`.
 4. **Triage.** For every finding, say whether it applies, with a one-line
    reason. Before judging one, check that the cited line still says what the
    finding describes; if it moved or changed, the finding does not apply. A
-   quoted project rule or OpenSpec scenario outranks your preference.
+   quoted project rule or OpenSpec scenario outranks your preference. The tipo
+   decides what you recommend: an `auto` that applies is recommended; a
+   `manual` that applies names the decision you would take; an `aviso` is
+   listed and never applied.
 
    ```
-   F1 🟠 aplica — el monto en Float rompe la regla de CLAUDE.md.
-   F2 🔵 no aplica — la línea ya cambió en el commit siguiente.
-   F3 🔵 aplica — el caso de reembolso 0 no tiene test.
+   F1 🟠 auto aplica — el monto en Float rompe la regla de CLAUDE.md.
+   F2 🔵 auto no aplica — la línea ya cambió en el commit siguiente.
+   F3 🔵 manual aplica — reembolso 0: rechazarlo o registrarlo; propongo rechazarlo.
+   F4 🔵 aviso — el job nuevo corre antes de la migración en el deploy.
    ```
 
 5. **Ask which to apply.** One question:
    `¿Aplico todos (F1–F3) o solo los que recomiendo (F1, F3)?`
+   Leave `aviso` findings out of both lists.
    The user may also name a list. No findings: say so and continue.
 6. **Apply.** Apply exactly the findings chosen. Run the tests that cover the
    files you touched. Then commit by the user's usual commit rules, which brings
