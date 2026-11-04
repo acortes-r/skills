@@ -142,8 +142,10 @@ def commentable_lines(patch):
     line = 0
     for raw in patch.splitlines():
         if raw.startswith("+++ "):
-            candidate = raw[6:]
-            path = None if candidate in ("dev/null", "") else candidate
+            candidate = raw[4:].strip()
+            if candidate.startswith("b/"):
+                candidate = candidate[2:]
+            path = None if candidate in ("/dev/null", "") else candidate
             continue
         if raw.startswith("@@"):
             found = HUNK.match(raw)

@@ -144,6 +144,14 @@ def test_second_violation_of_the_same_rule_is_published():
           "inline=1" in out and "already-posted=0" in out, out)
 
 
+def test_a_deleted_file_offers_no_targets():
+    patch = ("--- a/app/legacy.rb\n+++ /dev/null\n@@ -1,2 +0,0 @@\n"
+             "-def old\n-end\n" + DIFF)
+    targets = mod.commentable_lines(patch)
+    check("a deleted file adds no path to the targets",
+          {path for path, _ in targets} == {"app/models/user.rb"}, targets)
+
+
 def test_new_finding_is_published():
     findings = write("f2.json", [{"path": "app/models/user.rb", "line": 51,
                                   "body": "🔵 Extrae el timeout a constante."}])
