@@ -131,6 +131,19 @@ def test_moved_finding_is_not_reposted():
           and not sent, out)
 
 
+def test_second_violation_of_the_same_rule_is_published():
+    """Two violations of one rule share the quoted rule line, not the failure."""
+    rule = '🟠 `CLAUDE.md` · Errores: "toda llamada externa lleva timeout".'
+    existing = [{"path": "app/models/user.rb", "line": 42, "id": 112,
+                 "body": rule + "\nEste `Faraday.get` no lo tiene.",
+                 "in_reply_to_id": None}]
+    findings = write("f_rule.json", [{"path": "app/models/user.rb", "line": 50,
+                                      "body": rule + "\nEste `Net::HTTP.get` no lo tiene."}])
+    out = run(["--findings", findings, "--dry-run"], comments=existing)
+    check("a second violation of an already-cited rule is published",
+          "inline=1" in out and "already-posted=0" in out, out)
+
+
 def test_new_finding_is_published():
     findings = write("f2.json", [{"path": "app/models/user.rb", "line": 51,
                                   "body": "🔵 Extrae el timeout a constante."}])

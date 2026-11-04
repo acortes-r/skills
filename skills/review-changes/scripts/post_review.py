@@ -18,7 +18,8 @@ Invariants enforced here rather than left to the caller:
   * Every inline target is validated against the diff before posting, so a
     finding anchored outside a hunk degrades into the review body instead of
     failing the whole review with a 422.
-  * A finding whose path and opening text were already posted is skipped, so
+  * A finding whose path and opening text (what fails and the failing case,
+    the prose before any suggestion block) were already posted is skipped, so
     retrying after a partial failure does not duplicate comments, and a
     re-review does not repost a comment whose code has since moved lines.
   * A thread is resolved only when it is still open and this account opened it
@@ -175,14 +176,29 @@ def first_line(body):
     return lines[0] if lines else ""
 
 
+def opening(body):
+    """The prose before any suggestion block: what fails, then the failing case.
+
+    Both lines are needed. A rule violation opens with the quoted rule, so two
+    violations of one rule in one file differ only on the second line.
+    """
+    prose = []
+    for line in (body or "").splitlines():
+        if line.lstrip().startswith("```"):
+            break
+        if line.strip():
+            prose.append(line.strip())
+    return "\n".join(prose[:2])
+
+
 def posted_signatures(comments):
-    """{(path, first_body_line)} for findings this PR already carries.
+    """{(path, opening)} for findings this PR already carries.
 
     The line number is deliberately not part of the key. Between two runs of a
     review the code moves, so the same finding comes back anchored somewhere
     else; keying on the line would let it be posted a second time.
     """
-    return {(item.get("path"), first_line(item.get("body")))
+    return {(item.get("path"), opening(item.get("body")))
             for item in comments}
 
 
@@ -363,7 +379,7 @@ def split_findings(findings, targets, posted):
             print("post_review: skipping a finding with no path or no body",
                   file=sys.stderr)
             continue
-        if (path, first_line(body)) in posted:
+        if (path, opening(body)) in posted:
             skipped += 1
             continue
         if line is not None and (path, int(line)) in targets:

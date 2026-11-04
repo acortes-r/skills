@@ -246,7 +246,9 @@ Nothing is remembered between runs. Every disposition is re-derived from the PR
 itself, so an accepted rebuttal keeps being accepted without any local state.
 
 A rebase that moves every line does not cause reposts: an already-posted comment
-is matched by path and opening text, never by line number.
+is matched by path and opening text, never by line number. The opening text is
+the first two lines of prose, so two violations of one quoted rule in one file
+stay distinct.
 
 ## Publishing, and checking first with `--dry-run`
 
