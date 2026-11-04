@@ -12,8 +12,9 @@ Invariants enforced here rather than left to the caller:
     body either.
   * The same head commit is never approved twice, and never gets two round
     summaries.
-  * Every review body opens with its round, `Ronda N`, so the author can tell
-    a re-review ran. N is derived from the reviews already on the PR; no state
+  * Every review body opens with its round and the head commit it reviewed,
+    `Ronda N (abc1234)`, so the author can tell a re-review ran and on which
+    push. N is derived from the reviews already on the PR; no state
     is kept anywhere else.
   * Every inline target is validated against the diff before posting, so a
     finding anchored outside a hunk degrades into the review body instead of
@@ -324,8 +325,11 @@ def anchor(path, line):
     return f"`{path}:{line}`" if line is not None else f"`{path}`"
 
 
-def round_body(number, new_lines, summary, notes=None, approving=False):
+def round_body(number, new_lines, summary, notes=None, approving=False, sha=""):
     """The round's review body, or "" when an approval has nothing to say.
+
+    The heading names the head commit reviewed, short and bare so GitHub links
+    it, so the author can tell which push a round looked at.
 
     Sections with nothing in them are left out. An approval with nothing new,
     nothing resolved and no notes goes in bare: the green check already says
@@ -335,9 +339,12 @@ def round_body(number, new_lines, summary, notes=None, approving=False):
     if approving and not new_lines and not resolved and not notes:
         return ""
 
-    heading = f"{ROUND_PREFIX}{number}"
+    qualifiers = [sha[:7]] if sha else []
     if summary["parcial"]:
-        heading += f" (revisión parcial: {summary['parcial']})"
+        qualifiers.append(f"revisión parcial: {summary['parcial']}")
+    heading = f"{ROUND_PREFIX}{number}"
+    if qualifiers:
+        heading += f" ({', '.join(qualifiers)})"
 
     if notes:
         plural = "notas" if len(notes) != 1 else "nota"
@@ -537,7 +544,8 @@ def run_approve(args):
 
     number = next_round(reviews)
     payload = {"event": APPROVE_EVENT}
-    body = round_body(number, new_lines, summary, notes=notes, approving=True)
+    body = round_body(number, new_lines, summary, notes=notes, approving=True,
+                      sha=sha)
     if body:
         payload["body"] = body
     if inline:
@@ -641,7 +649,7 @@ def main():
     payload = None
     if new_lines or not round_at_head(reviews, sha):
         payload = {"event": REVIEW_EVENT,
-                   "body": round_body(number, new_lines, summary),
+                   "body": round_body(number, new_lines, summary, sha=sha),
                    "comments": inline}
         if sha:
             payload["commit_id"] = sha

@@ -23,9 +23,10 @@ anything is published: what the author replied decides whether a finding is
 gone, does not apply, or is still open.
 
 Every run that publishes is a **round**. Its review body opens with `Ronda N`
-and lists, one line each, what this round found, what was resolved since the
-previous round, and what is still pending, so the author can tell a review ran
-even when it adds no comment. Our own threads whose problem is gone get
+and the short sha of the head commit it reviewed, then lists, one line each,
+what this round found, what was resolved since the previous round, and what is
+still pending, so the author can tell a review ran, and on which push, even
+when it adds no comment. Our own threads whose problem is gone get
 resolved in the same go.
 
 A diff that changes no behavior — documentation, OpenSpec markdown, a

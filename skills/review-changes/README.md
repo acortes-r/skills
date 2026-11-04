@@ -61,7 +61,7 @@ flow and how to install it in the agent's instruction file.
 | **Adversarial verification** | A second pass tries to refute every candidate and can only confirm, adjust, or discard. It can never add a finding. |
 | **Never repeats itself** | On a re-review it finds its own earlier threads, reads what the author replied, and decides from that: fixed, does not apply, or still open. A comment it already made is never made again — not reworded, not at a new line after a rebase. |
 | **Deduped against other reviewers** | Collects existing inline threads, PR-level comments, and bot summaries — CodeRabbit, Codacy, Sonar, Copilot, humans — and drops findings already covered. Resolved threads stay closed. A finding dropped onto an **open** thread still counts as a problem: it withholds the approval instead of vanishing. |
-| **Every review is a round** | Each publish opens with `Ronda N` and lists, one line each, what it found, what was resolved since the last round, and what is still pending — so the author knows a review ran even when it adds no comment. Its own threads whose problem is gone get resolved in the same go. |
+| **Every review is a round** | Each publish opens with `Ronda N` and the commit it reviewed, and lists, one line each, what it found, what was resolved since the last round, and what is still pending — so the author knows a review ran even when it adds no comment. Its own threads whose problem is gone get resolved in the same go. |
 | **Never blocks a merge** | `REQUEST_CHANGES` is impossible by construction. The default event is `COMMENT`. |
 | **Docs-only diffs get approved, not peppered** | A change that alters no behavior — documentation, OpenSpec markdown, a comment-only edit to a code file — gets one `APPROVE` with the notes in its body instead of a wall of inline suggestions. Nothing worth saying means a bare approval, no body. It asks you first, every time. |
 | **The summary states the count and the question** | Every run reports how many comments there are by severity, whether the PR can be approved, and asks for the one thing a yes would authorise. |
@@ -151,7 +151,7 @@ Every review this skill publishes is a round, numbered from the reviews this
 account already left on the PR. Nothing is stored locally.
 
 ```markdown
-Ronda 2. 1 comentario nuevo, ninguno bloquea el merge.
+Ronda 2 (a1b2c3d). 1 comentario nuevo, ninguno bloquea el merge.
 
 Nuevos:
 - `app/models/booking.rb:42` — importante: el monto negativo pasa la validación
@@ -219,7 +219,7 @@ approval, as one review:
 
 ```
 event: APPROVE
-body:  Ronda 1. 1 comentario nuevo, ninguno bloquea el merge. + Nuevos list
+body:  Ronda 1 (a1b2c3d). 1 comentario nuevo, ninguno bloquea el merge. + Nuevos list
 comments: the suggestions, anchored on their lines
 ```
 
@@ -286,7 +286,7 @@ so it reports the real outcome rather than a guess:
 post_review: dry run. Payload that would be sent:
 {
   "event": "COMMENT",
-  "body": "Ronda 2. 3 comentarios nuevos, ninguno bloquea el merge.\n\nNuevos:\n- …",
+  "body": "Ronda 2 (a1b2c3d). 3 comentarios nuevos, ninguno bloquea el merge.\n\nNuevos:\n- …",
   "comments": [
     { "path": "app/models/user.rb", "line": 11, "side": "RIGHT", "body": "🟠 ..." }
   ]

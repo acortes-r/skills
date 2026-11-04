@@ -203,8 +203,8 @@ def test_first_round_lists_new_findings_without_emoji():
     sent = []
     out = run(["--findings", findings], sent=sent)
     body = sent[0]["body"] if sent else ""
-    check("the first round names Ronda 1 and lists Nuevos in words",
-          body.startswith("Ronda 1. 1 comentario nuevo")
+    check("the first round names Ronda 1, its commit, and lists Nuevos in words",
+          body.startswith("Ronda 1 (abc1234). 1 comentario nuevo")
           and "- `app/models/user.rb:51` — importante: `user` puede ser nil" in body
           and "Resueltos" not in body and "Pendientes" not in body
           and "🟠" not in body, out)
@@ -224,7 +224,7 @@ def test_round_number_counts_only_our_rounds():
               reviews=reviews, sent=sent)
     body = sent[0]["body"] if sent else ""
     check("a reply's empty review and another account's review are not rounds",
-          body.startswith("Ronda 3. Sin comentarios nuevos.")
+          body.startswith("Ronda 3 (abc1234). Sin comentarios nuevos.")
           and "Pendientes:\n- `a.rb:3` — x" in body, out)
 
 
@@ -243,7 +243,7 @@ def test_partial_round_says_so():
               sent=sent)
     check("a partial round names what did not run",
           sent and sent[0]["body"]
-          == "Ronda 1 (revisión parcial: security no corrió). Sin comentarios.", out)
+          == "Ronda 1 (abc1234, revisión parcial: security no corrió). Sin comentarios.", out)
 
 
 def test_degraded_finding_lives_in_the_list():
@@ -336,7 +336,7 @@ def test_approve_carries_a_suggestion_inline():
           sole.get("event") == "APPROVE"
           and sole.get("comments", [{}])[0].get("line") == 51
           and sole.get("body") == (
-              "Ronda 1. 1 comentario nuevo, ninguno bloquea el merge.\n\n"
+              "Ronda 1 (abc1234). 1 comentario nuevo, ninguno bloquea el merge.\n\n"
               "Nuevos:\n- `app/models/user.rb:51` — sugerencia: "
               "Extrae el timeout a constante."),
           out)
@@ -353,7 +353,7 @@ def test_approve_with_resolved_threads_lists_them():
     review = next((item for item in sent if "event" in item), {})
     check("an approval after fixes names the round and what was resolved",
           review.get("event") == "APPROVE"
-          and review.get("body") == ("Ronda 2. Sin comentarios nuevos.\n\n"
+          and review.get("body") == ("Ronda 2 (abc1234). Sin comentarios nuevos.\n\n"
                                      "Resueltos desde la ronda anterior:\n"
                                      "- `a.rb:1` — N+1")
           and {"resolve": "T1"} in sent, out)
