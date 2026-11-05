@@ -1,0 +1,47 @@
+{
+  "skill_name": "triage-pr-feedback",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/triage-pr-feedback 120. The PR has 4 unresolved threads: two from a human reviewer and two from CodeRabbit. One CodeRabbit thread claims a function is called with a stale token, but the caller reads the token from the store at failure time.",
+      "expected_output": "A numbered table with one row per thread, a verdict and evidence for each, then one question about what to apply. No files change and nothing is posted.",
+      "expectations": [
+        "Fetches unresolved threads, top-level comments and review bodies before judging.",
+        "Reads the code at every location the threads name.",
+        "Marks the stale-token claim with the caller line that refutes or confirms it.",
+        "Shows one table with #, author, level, where, comment, applies?, why.",
+        "Ends with a question; makes no edit, commit, reply, or thread resolution."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "revisa los comentarios del PR y dime cuáles aplican. A reviewer says express wallets are charged while the card is selected, so a refusal marks the card form. In the code, the wallet form only renders when the wallet option is selected.",
+      "expected_output": "The wallet finding is marked as not applying, citing the component that renders the wallet only when selected. The table and question are in Spanish.",
+      "expectations": [
+        "Checks where the wallet button renders before accepting the scenario.",
+        "Marks the item ❌ with the file and line that refutes the premise.",
+        "Writes the table headers and the closing question in Spanish."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "/triage-pr-feedback. CodeRabbit left two comments outside the diff in its latest review body, and a fourth-round comment on the same fallback function asks to copy one more selector rule into it; when the function cannot confirm a method it already shows the generic error.",
+      "expected_output": "Both outside-diff comments appear in the table. The fourth-round item is recommended for declining because it already fails safe, with a note that the rounds on that block are not converging.",
+      "expectations": [
+        "Reads review bodies and includes outside-diff comments as rows.",
+        "Names the failure direction of the fourth-round item as a safe fallback.",
+        "Recommends declining it or moving the logic to its owner as a follow-up, instead of another patch."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "/triage-pr-feedback 88. A reviewer says the Yuno concrete method can stay selected from a stale session after a minimum-amount refusal. Whether that can happen depends on how the backend PR matches the minimum to the payment engine.",
+      "expected_output": "The row cites the backend code that decides the match, or is marked 🔎 with what was checked and what would settle it.",
+      "expectations": [
+        "Reads the backend contract (the open PR or deployed branch) instead of assuming it.",
+        "Names the file and method that decide the verdict.",
+        "Uses 🔎 only when the contract cannot be confirmed, saying what would settle it."
+      ]
+    }
+  ]
+}
