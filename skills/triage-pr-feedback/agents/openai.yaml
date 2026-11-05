@@ -1,0 +1,15 @@
+interface:
+  display_name: "Triage PR Feedback"
+  short_description: "Judges every open comment on a pull request against the code and answers with a table of which apply, which don't, and why; changes nothing until you decide"
+  default_prompt: "Use triage-pr-feedback on this pull request. Show the verdict table and ask what to apply; do not edit, commit, reply, or resolve anything yet."
+
+policy:
+  allow_implicit_invocation: true
+  read_only_repository: true
+  write_scopes: []
+  forbidden_actions:
+    - file_edit
+    - git_commit
+    - git_push
+    - pull_request_comment
+    - pull_request_thread_resolve

@@ -38,6 +38,7 @@ the update to take effect.
 |---|---|
 | [review-changes](skills/review-changes/) | Non-blocking code review: loads the project's own rules, verifies findings adversarially, dedupes against its own earlier comments and other reviewers, publishes GitHub suggestions, approves only after asking, never on its own |
 | [start-task](skills/start-task/) | Opens a git worktree and branch for a new task as a Herdr workspace, named from the Linear issue or the task description, and hands the gathered context to a coding agent there (Claude, Codex, Cursor, …); proposes the name, base, and agent and waits before creating anything |
+| [triage-pr-feedback](skills/triage-pr-feedback/) | Judges every open comment on a pull request (review threads, top-level comments, bots' outside-diff notes) against the code and answers with one table of which apply, which don't, and why; changes nothing until you decide |
 
 ## Layout
 
