@@ -44,14 +44,20 @@ Severity counts come from `review-result.comments`: the non-zero ones as
 
 One line per PR with `has_events: true`: `<emoji> <label>#<n> · <facts>`.
 
-Facts, in this order, joined by ` · `, each only when present:
+Facts, in this order, joined by ` · `, each only when present. `radar.py`
+already gives one entry per person: a reviewer's comments sit in their review
+entry, so nobody appears twice.
+
+The parenthesis lists the non-zero counts (`1 review`, `2 reviews`,
+`1 comentario`, `3 comentarios`) and is left out at 1 review and 0 comments:
+`ana-r aprobó (4 reviews)`, `beto-r pidió cambios`, `cami-r comentó (2 reviews,
+3 comentarios)`, `dani-r: 3 comentarios`.
 
 | From | Fact |
 |---|---|
-| `events.reviews` | `<author> aprobó` · `<author> pidió cambios` · `<author> comentó` |
-| `events.reviews`, the bots entry | `<count> reviews de <logins without [bot]>` (`1 review de …`) |
-| `events.comments`, first person entry | `<count> comentarios nuevos de <author>` (`1 comentario nuevo de …`) |
-| `events.comments`, later entries | `<count> de <author>`; the bots entry names its `logins` without `[bot]` |
+| `events.reviews`, one per person, in the order given | `<author> aprobó` · `<author> pidió cambios` · `<author> comentó`, by `state`, plus `(<reviews> reviews, <comments> comentarios)` |
+| `events.comments`, people | `<author>: <count> comentarios` (`1 comentario`) |
+| the bots entries of `events.reviews` and `events.comments` | one fact, `bots: <sum of both counts>` |
 | `events.commits` | `<author> subió <count> commits` (`1 commit`) |
 | `events.ci_failed` | `CI rojo en <sha>` |
 | `conflicts` | `tiene conflictos con la base` |
@@ -66,10 +72,10 @@ comments or bot reviews, `📥` commits. Only people's reviews count for `🔁` 
 `✅`; `approved`, `changes_requested`, and `ready` already ignore bots.
 
 ```
-✅ purchase#3196 · carlos-r aprobó · CI verde · listo para mergear
-✅ purchase#3201 · carlos-r aprobó · CI verde · 2 hilos sin verificar
-💬 integrations#1490 · 3 comentarios nuevos de jaz-r · 1 de coderabbitai
-🔁 funnel#2907 · angel-r pidió cambios · CI rojo en 9f3e21c
+✅ funnel#2907 · ana-r aprobó (4 reviews) · eli-r aprobó · cami-r comentó (2 reviews) · bots: 3 · CI verde · listo para mergear
+✅ purchase#3201 · beto-r aprobó · CI verde · 2 hilos sin verificar
+💬 integrations#1490 · dani-r: 3 comentarios · bots: 1
+🔁 funnel#2910 · angel-r pidió cambios · CI rojo en 9f3e21c
 📥 purchase#3188 · carlos-r subió 2 commits
 ```
 

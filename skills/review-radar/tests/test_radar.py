@@ -531,11 +531,72 @@ def test_my_prs_reviews():
         review("yo-ficticio", "COMMENTED", at="2026-03-10T15:30:00Z", body="gracias")]))
     pr = data["prs"][0]
     check("new reviews by others, with author and state, after since",
-          pr["events"]["reviews"] == [{"author": "colega-uno", "state": "APPROVED"},
-                                      {"author": "colega-dos",
-                                       "state": "CHANGES_REQUESTED"}], pr["events"])
+          pr["events"]["reviews"] == [
+              {"author": "colega-uno", "state": "APPROVED", "reviews": 1, "comments": 0},
+              {"author": "colega-dos", "state": "CHANGES_REQUESTED", "reviews": 1,
+               "comments": 0}], pr["events"])
     check("a CHANGES_REQUESTED that is still the reviewer's latest blocks",
           pr["changes_requested"] is True and pr["ready"] is False, pr)
+
+
+def review_events(reviews, review_comments=(), issue_comments=()):
+    data, _ = my_prs(my_routes(mine(), reviews=reviews,
+                               review_comments=review_comments,
+                               issue_comments=issue_comments))
+    return data["prs"][0]["events"]
+
+
+def at(minute):
+    return f"2026-03-10T15:{20 + minute:02d}:00Z"  # after SINCE (15:07Z)
+
+
+def test_my_prs_one_entry_per_reviewer():
+    events = review_events([review("colega-uno", "APPROVED", at=at(n)) for n in range(4)])
+    check("several reviews by one person are one entry with the count",
+          events["reviews"] == [{"author": "colega-uno", "state": "APPROVED",
+                                 "reviews": 4, "comments": 0}], events)
+
+
+def test_my_prs_latest_decisive_state_wins():
+    events = review_events([review("colega-uno", "APPROVED", at=at(1)),
+                            review("colega-uno", "COMMENTED", at=at(2))])
+    check("APPROVED then COMMENTED keeps APPROVED",
+          events["reviews"][0]["state"] == "APPROVED"
+          and events["reviews"][0]["reviews"] == 2, events)
+    events = review_events([review("colega-uno", "APPROVED", at=at(1)),
+                            review("colega-uno", "CHANGES_REQUESTED", at=at(2))])
+    check("APPROVED then CHANGES_REQUESTED ends as CHANGES_REQUESTED",
+          events["reviews"][0]["state"] == "CHANGES_REQUESTED", events)
+    events = review_events([review("colega-uno", "COMMENTED", at=at(1)),
+                            review("colega-uno", "COMMENTED", at=at(2))])
+    check("only COMMENTED reviews leave COMMENTED",
+          events["reviews"][0]["state"] == "COMMENTED", events)
+
+
+def test_my_prs_reviewers_ordered_by_state():
+    events = review_events([review("colega-tres", "COMMENTED", at=at(1)),
+                            review("colega-dos", "CHANGES_REQUESTED", at=at(2)),
+                            review("colega-uno", "APPROVED", at=at(3))])
+    check("approvals, then change requests, then comments",
+          [e["author"] for e in events["reviews"]]
+          == ["colega-uno", "colega-dos", "colega-tres"], events)
+
+
+def test_my_prs_reviewer_comments_fold_in():
+    events = review_events(
+        [review("colega-uno", "COMMENTED", at=at(1)),
+         review("colega-uno", "COMMENTED", at=at(2))],
+        review_comments=[comment("colega-uno"), comment("colega-uno"),
+                         comment("colega-dos")],
+        issue_comments=[comment("colega-uno"), comment("revisor-ia[bot]")])
+    check("a reviewer's comments join their review entry",
+          events["reviews"] == [{"author": "colega-uno", "state": "COMMENTED",
+                                 "reviews": 2, "comments": 3}], events)
+    check("people who only commented, and bots, stay in comments",
+          events["comments"] == [
+              {"author": "colega-dos", "count": 1, "bot": False},
+              {"author": "bots", "logins": ["revisor-ia[bot]"], "count": 1,
+               "bot": True}], events)
 
 
 def bot_review(author, state="COMMENTED", at="2026-03-10T15:21:00Z",
@@ -572,7 +633,8 @@ def test_my_prs_bot_cannot_block_a_human_approval():
           pr["approved"] is True and pr["changes_requested"] is False
           and pr["ready"] is True, pr)
     check("the person's review stays its own event",
-          pr["events"]["reviews"][0] == {"author": "colega-uno", "state": "APPROVED"},
+          pr["events"]["reviews"][0] == {"author": "colega-uno", "state": "APPROVED",
+                                         "reviews": 1, "comments": 0},
           pr["events"])
 
 

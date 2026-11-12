@@ -582,7 +582,7 @@ def after(stamp, since):
 
 
 def group_comments(comments, me, since, group_bots):
-    counts, bots = {}, {}
+    counts, bots, kinds = {}, {}, {}
     for comment in comments:
         user = comment.get("user")
         who = login(user)
@@ -592,7 +592,8 @@ def group_comments(comments, me, since, group_bots):
             bots[who] = bots.get(who, 0) + 1
         else:
             counts[who] = counts.get(who, 0) + 1
-    entries = [{"author": who, "count": n, "bot": is_bot({"login": who})}
+            kinds[who] = is_bot(user)
+    entries = [{"author": who, "count": n, "bot": kinds[who]}
                for who, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
     if bots:
         entries.append({"author": "bots", "logins": sorted(bots),
@@ -648,27 +649,55 @@ def latest_verdicts(reviews, me):
     return verdicts
 
 
+STATE_ORDER = {"APPROVED": 0, "CHANGES_REQUESTED": 1, "COMMENTED": 2}
+
+
 def new_review_events(reviews, since, group_bots):
-    """Reviews after `since` that say something: people one by one, bots folded
-    into one entry when group_bots, like their comments."""
-    events, bots = [], {}
+    """Reviews after `since` that say something, one entry per person.
+
+    A person's `state` is their latest APPROVED or CHANGES_REQUESTED in the
+    window, or COMMENTED when they left neither; `reviews` counts them all.
+    Bots fold into one entry when group_bots, like their comments. People come
+    first, approvals before change requests before comments.
+    """
+    people, bots = {}, {}
     for review in sorted(reviews, key=lambda r: r.get("submitted_at") or ""):
         if not after(review.get("submitted_at"), since):
             continue
         if review["state"] == "COMMENTED" and not (review.get("body") or "").strip():
             continue  # a container for line comments, counted with the comments
-        who = login(review.get("user"))
-        if is_bot(review.get("user")):
-            if group_bots:
-                bots[who] = bots.get(who, 0) + 1
-            else:
-                events.append({"author": who, "state": review["state"], "bot": True})
-        else:
-            events.append({"author": who, "state": review["state"]})
+        who, bot = login(review.get("user")), is_bot(review.get("user"))
+        if bot and group_bots:
+            bots[who] = bots.get(who, 0) + 1
+            continue
+        entry = people.setdefault(who, {"author": who, "state": "COMMENTED",
+                                        "reviews": 0, "comments": 0})
+        if bot:
+            entry["bot"] = True
+        entry["reviews"] += 1
+        if review["state"] in ("APPROVED", "CHANGES_REQUESTED"):
+            entry["state"] = review["state"]
+    events = sorted(people.values(), key=lambda e: STATE_ORDER[e["state"]])
     if bots:
         events.append({"author": "bots", "logins": sorted(bots),
                        "count": sum(bots.values()), "bot": True})
     return events
+
+
+def fold_comments(review_events, comment_events):
+    """Move each reviewer's comment count into their review entry.
+
+    Returns the comment entries left: people who only commented, and bots.
+    """
+    by_author = {e["author"]: e for e in review_events if "reviews" in e}
+    left = []
+    for entry in comment_events:
+        target = by_author.get(entry["author"]) if "logins" not in entry else None
+        if target is None:
+            left.append(entry)
+        else:
+            target["comments"] += entry["count"]
+    return left
 
 
 def draft_since(owner, repo, pr):
@@ -701,7 +730,8 @@ def one_pr(cfg, owner, repo, listed, since, now):
     stamp = since.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     comments = api_pages(f"repos/{full}/pulls/{number}/comments?since={stamp}")
     comments += api_pages(f"repos/{full}/issues/{number}/comments?since={stamp}")
-    grouped = group_comments(comments, me, since, bool(opts.get("group_bot_comments", True)))
+    grouped = fold_comments(new_reviews, group_comments(
+        comments, me, since, bool(opts.get("group_bot_comments", True))))
     commits = new_commits(api_pages(f"repos/{full}/pulls/{number}/commits"),
                           me, since)
     head = (pr.get("head") or {}).get("sha") or ""
