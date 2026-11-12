@@ -95,6 +95,7 @@ are empty, write `🗓️ Pendientes: nada`.
 
 ```
 🗓️ Pendientes
+🚀 Listos para mergear: <label>#<n>, …                 ← ready
 📝 Drafts: <label>#<n> (<draft_days> d), …
 💤 Sin movimiento: <label>#<n> (<idle_days> d), …     ← stale and not draft
 ⏳ Sin review: <label>#<n>, …                          ← needs_review
