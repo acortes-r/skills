@@ -240,17 +240,27 @@ def api(endpoint):
     return json.loads(gh(["api", endpoint]) or "null")
 
 
+PER_PAGE = 100
+MAX_PAGES = 100
+
+
 def api_pages(endpoint):
-    """Every item of a paginated REST list (pages arrive back to back)."""
-    raw = gh(["api", endpoint, "--paginate"]) or "[]"
-    decoder, items, index = json.JSONDecoder(), [], 0
-    while index < len(raw):
-        if raw[index].isspace():
-            index += 1
-            continue
-        page, index = decoder.raw_decode(raw, index)
-        items.extend(page if isinstance(page, list) else [page])
-    return items
+    """Every item of a paginated REST list, one `page=N` request at a time.
+
+    Not `gh api --paginate`: GitHub's `Link` header names the repository by
+    numeric id (`repositories/<id>/...`), and the cloud proxy refuses those
+    paths with 403 from page 2 on. A page shorter than PER_PAGE is the last.
+    """
+    joiner = "&" if "?" in endpoint else "?"
+    items = []
+    for page in range(1, MAX_PAGES + 1):
+        batch = json.loads(gh(["api", f"{endpoint}{joiner}per_page={PER_PAGE}"
+                                      f"&page={page}"]) or "[]")
+        batch = batch if isinstance(batch, list) else [batch]
+        items.extend(batch)
+        if len(batch) < PER_PAGE:
+            return items
+    raise RuntimeError(f"{endpoint}: more than {MAX_PAGES} pages")
 
 
 def review_threads(full, number):
@@ -340,7 +350,7 @@ def why_candidate(pr, cfg, owner, repo):
     for team in pr.get("requested_teams") or []:
         if team.get("slug") in teams:
             return f"review pedido a @{team['slug']}"
-    reviews = api_pages(f"repos/{owner}/{repo}/pulls/{pr['number']}/reviews?per_page=100")
+    reviews = api_pages(f"repos/{owner}/{repo}/pulls/{pr['number']}/reviews")
     if my_reviews(reviews, me):
         return "ya lo revisé antes (re-review)"
     return None
@@ -428,7 +438,7 @@ def collect_github(args, cfg, out):
         return
     for repo in cfg["github"]["repos"]:
         try:
-            pulls = api_pages(f"repos/{org}/{repo}/pulls?state=open&per_page=100")
+            pulls = api_pages(f"repos/{org}/{repo}/pulls?state=open")
         except RuntimeError as err:
             out["errors"].append({"repo": f"{org}/{repo}", "error": str(err)})
             continue
@@ -466,7 +476,7 @@ def decide(cfg, ref, source):
     author = login(pr.get("user"))
     if author == me:
         return "skip", "PR propio", summary
-    reviews = api_pages(f"repos/{owner}/{repo}/pulls/{number}/reviews?per_page=100")
+    reviews = api_pages(f"repos/{owner}/{repo}/pulls/{number}/reviews")
     mine = my_reviews(reviews, me)
     if source == "github" and author not in (gh_cfg.get("my_team_authors") or []) \
             and not mine:
@@ -570,7 +580,7 @@ def latest_verdicts(reviews, me):
 
 
 def draft_since(owner, repo, pr):
-    events = api_pages(f"repos/{owner}/{repo}/issues/{pr['number']}/timeline?per_page=100")
+    events = api_pages(f"repos/{owner}/{repo}/issues/{pr['number']}/timeline")
     stamps = [e.get("created_at") for e in events
               if e.get("event") == "convert_to_draft" and e.get("created_at")]
     return gh_time(max(stamps)) if stamps else gh_time(pr.get("created_at"))
@@ -590,7 +600,7 @@ def one_pr(cfg, owner, repo, listed, since, now):
     opts = cfg.get("my_prs") or {}
     number, full = listed["number"], f"{owner}/{repo}"
     pr = api(f"repos/{full}/pulls/{number}")  # the list omits mergeable_state
-    reviews = api_pages(f"repos/{full}/pulls/{number}/reviews?per_page=100")
+    reviews = api_pages(f"repos/{full}/pulls/{number}/reviews")
     others = [r for r in reviews if login(r.get("user")) != me
               and r.get("state") in ("APPROVED", "CHANGES_REQUESTED", "COMMENTED")]
     new_reviews = [{"author": login(r.get("user")), "state": r["state"]}
@@ -598,10 +608,10 @@ def one_pr(cfg, owner, repo, listed, since, now):
                    if after(r.get("submitted_at"), since)
                    and (r["state"] != "COMMENTED" or (r.get("body") or "").strip())]
     stamp = since.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    comments = api_pages(f"repos/{full}/pulls/{number}/comments?per_page=100&since={stamp}")
-    comments += api_pages(f"repos/{full}/issues/{number}/comments?per_page=100&since={stamp}")
+    comments = api_pages(f"repos/{full}/pulls/{number}/comments?since={stamp}")
+    comments += api_pages(f"repos/{full}/issues/{number}/comments?since={stamp}")
     grouped = group_comments(comments, me, since, bool(opts.get("group_bot_comments", True)))
-    commits = new_commits(api_pages(f"repos/{full}/pulls/{number}/commits?per_page=100"),
+    commits = new_commits(api_pages(f"repos/{full}/pulls/{number}/commits"),
                           me, since)
     head = (pr.get("head") or {}).get("sha") or ""
     ci, failed_now = ci_state(owner, repo, head, since)
@@ -642,7 +652,7 @@ def cmd_my_prs(args):
     out = {"since": since.isoformat(), "prs": [], "errors": []}
     for repo in cfg["github"]["repos"]:
         try:
-            pulls = api_pages(f"repos/{org}/{repo}/pulls?state=open&per_page=100")
+            pulls = api_pages(f"repos/{org}/{repo}/pulls?state=open")
         except RuntimeError as err:
             out["errors"].append({"repo": f"{org}/{repo}", "error": str(err)})
             continue

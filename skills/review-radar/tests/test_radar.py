@@ -115,6 +115,7 @@ def run(argv, routes, threads=("graphql", [])):
     def fake_gh(args):
         assert args[0] == "api", f"only REST api calls allowed: {args!r}"
         assert "graphql" not in args, f"GraphQL is forbidden: {args!r}"
+        assert "--paginate" not in args, f"--paginate breaks in the cloud: {args!r}"
         endpoint = args[1]
         calls.append(endpoint)
         path = endpoint.split("?", 1)[0]
@@ -148,6 +149,32 @@ def run(argv, routes, threads=("graphql", [])):
 
 def cfg_args(*rest):
     return [rest[0], "--config", str(CFG_PATH), *rest[1:]]
+
+
+# --- pagination -------------------------------------------------------------
+
+
+def test_pages_are_requested_one_by_one():
+    full = [pull(n) for n in range(1, mod.PER_PAGE + 1)]
+    asked = []
+
+    def fake_gh(args):
+        assert "--paginate" not in args, args
+        endpoint, _, query = args[1].partition("?")
+        params = dict(pair.split("=", 1) for pair in query.split("&"))
+        asked.append(params)
+        return json.dumps(full if params["page"] == "1" else [pull(500)])
+
+    original, mod.gh = mod.gh, fake_gh
+    try:
+        items = mod.api_pages("repos/acme/tienda-pagos/pulls?state=open")
+    finally:
+        mod.gh = original
+    check("a full page asks for the next one and a short page ends the list",
+          len(items) == mod.PER_PAGE + 1 and items[-1]["number"] == 500
+          and [p["page"] for p in asked] == ["1", "2"]
+          and all(p["per_page"] == str(mod.PER_PAGE) and p["state"] == "open"
+                  for p in asked), asked)
 
 
 # --- config -----------------------------------------------------------------
