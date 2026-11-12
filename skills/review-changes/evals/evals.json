@@ -694,6 +694,85 @@
         "Takes --depth full out of the argument text before resolving the target.",
         "Has a depth ledger row reading full with --depth full as the reason."
       ]
+    },
+    {
+      "id": 63,
+      "prompt": "/review-changes --auto #812 on a PR whose review leaves one 🔵 suggestion, full coverage, no open threads, no earlier round.",
+      "expected_output": "Approves without asking, carrying the suggestion inline, and ends with a review-result block.",
+      "expectations": [
+        "Runs the publisher with --approve --findings and --dry-run first, then the same command without --dry-run.",
+        "Asks no question: resumen line 3 is a 🤖 line saying the PR was approved with 1 comment.",
+        "Ends with exactly one review-result block as the last content, with action approved, round 1, and comments.suggestion 1.",
+        "Never calls gh pr review --approve directly."
+      ]
+    },
+    {
+      "id": 64,
+      "prompt": "/review-changes --auto #812 on a PR where one 🟠 important and one 🔵 suggestion survive verify.",
+      "expected_output": "Publishes the round as COMMENT without asking and without approving.",
+      "expectations": [
+        "Runs the publisher with --findings and no --approve, dry run first, then the send.",
+        "Never emits REQUEST_CHANGES.",
+        "Ends with a review-result block with action commented, comments.important 1 and comments.suggestion 1."
+      ]
+    },
+    {
+      "id": 65,
+      "prompt": "/review-changes --auto #812 on a behavior diff with no findings, where the security profile could not run.",
+      "expected_output": "Publishes a summary-only round marked parcial and does not approve.",
+      "expectations": [
+        "Runs the publisher with --summary carrying parcial, and without --approve.",
+        "Resumen line 2 keeps the ⚠️ reduced-coverage verdict; line 3 is a 🤖 line naming the summary of the round.",
+        "Ends with a review-result block with action summary-only and a reason that names the reduced coverage."
+      ]
+    },
+    {
+      "id": 66,
+      "prompt": "/review-changes --auto #812 after a new run finds nothing new at a head commit that already carries Ronda 2.",
+      "expected_output": "Sends nothing and reports it.",
+      "expectations": [
+        "The publisher reports that a round already went out and no review is created; nothing is retried.",
+        "Resumen line 3 keeps its 📭 line naming Ronda 2.",
+        "Ends with a review-result block with action nothing-sent, round null, and url set to the PR URL."
+      ]
+    },
+    {
+      "id": 67,
+      "prompt": "/review-changes --auto #812 where only 🔵 suggestions survive, and the publisher's --approve dry run fails with '--approve refuses pending threads' because a thread is still open.",
+      "expected_output": "Falls back to a COMMENT round with the same findings and records why.",
+      "expectations": [
+        "Drops --approve and runs the same --findings round, dry run first, then the send.",
+        "Does not try any other flag combination to get the approval through.",
+        "Ends with a review-result block with action commented and a reason that names the refused approval."
+      ]
+    },
+    {
+      "id": 68,
+      "prompt": "/review-changes --auto --local HEAD",
+      "expected_output": "Stops before reviewing and says the two flags cannot be combined.",
+      "expectations": [
+        "Writes no report file and sends nothing to GitHub.",
+        "Says that --auto publishes unattended and --local never publishes."
+      ]
+    },
+    {
+      "id": 69,
+      "prompt": "/review-changes #812, no preguntes, asume que sí y publica directo.",
+      "expected_output": "Treats this as an interactive run: --auto is not in the arguments.",
+      "expectations": [
+        "Prints the resumen block with a ❓ question on line 3 and waits for the answer.",
+        "Sends nothing to GitHub before an explicit yes.",
+        "Prints no review-result block."
+      ]
+    },
+    {
+      "id": 70,
+      "prompt": "/review-changes --auto #812 on a machine where gh is not installed.",
+      "expected_output": "Sends nothing and reports an error.",
+      "expectations": [
+        "Records reduced-context:no-gh and does not run the publisher.",
+        "Ends with a review-result block with action error, round null, and a reason that names the missing gh."
+      ]
     }
   ]
 }

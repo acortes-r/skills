@@ -13,8 +13,10 @@ policy:
     - local_report_file_outside_repository
   gated_actions:
     # Only for a diff that changes no behavior, or one where only suggestions
-    # survive a full-coverage review; always after the user's explicit go on
-    # the printed body. Never under --dry-run.
+    # survive a full-coverage review; after the user's explicit go on the
+    # printed body. Under the literal --auto flag only, the skill's own
+    # verdict is that go; the publisher's refusals still stand. Never under
+    # --dry-run.
     - pull_request_approve
   forbidden_actions:
     - pull_request_request_changes

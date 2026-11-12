@@ -445,6 +445,57 @@ def test_notes_require_approve():
           "only meaningful with --approve" in out and "EXIT 1" in out, out)
 
 
+# --- what --auto reads from the publisher ------------------------------
+# An unattended run has no human to read the payload, so it acts on the exit
+# code and the printed lines. These pin that contract.
+
+
+def test_refused_approval_dry_run_sends_nothing():
+    findings = write("f_auto1.json", [{"path": "app/models/user.rb", "line": 51,
+                                       "body": "🔵 Extrae el timeout a constante."}])
+    summary = write("s_auto1.json", {"pendientes": ["`a.rb:1` — x"]})
+    sent = []
+    out = run(["--approve", "--findings", findings, "--summary", summary,
+               "--dry-run"], sent=sent)
+    check("a refused approval fails its dry run before any write",
+          "--approve refuses" in out and "EXIT 1" in out and not sent, out)
+
+
+def test_refused_approval_falls_back_to_comment():
+    findings = write("f_auto2.json", [{"path": "app/models/user.rb", "line": 51,
+                                       "body": "🔵 Extrae el timeout a constante."}])
+    summary = write("s_auto2.json", {"pendientes": ["`a.rb:1` — x"]})
+    sent = []
+    out = run(["--findings", findings, "--summary", summary], sent=sent)
+    sole = sent[0] if sent else {}
+    check("the same round without --approve goes out as COMMENT",
+          len(sent) == 1 and sole.get("event") == "COMMENT"
+          and sole.get("comments", [{}])[0].get("line") == 51
+          and "EXIT" not in out, out)
+
+
+def test_a_sent_review_prints_its_url():
+    findings = write("f_auto3.json", [{"path": "app/models/user.rb", "line": 51,
+                                       "body": "🔵 Extrae el timeout a constante."}])
+    approved = run(["--approve", "--findings", findings])
+    commented = run(["--findings", findings])
+    check("an approval prints its round and url",
+          "published as APPROVE" in approved and "round=1" in approved
+          and "post_review: https://example.test/r/1" in approved, approved)
+    check("a COMMENT round prints its round and url",
+          "published as COMMENT" in commented and "round=1" in commented
+          and "post_review: https://example.test/r/1" in commented, commented)
+
+
+def test_nothing_new_at_head_exits_clean():
+    at_head = [{"state": "COMMENTED", "commit_id": HEAD, "user": OURS,
+                "body": "Ronda 1 (abc1234). Sin comentarios."}]
+    sent = []
+    out = run(["--summary", write("s_auto4.json", {})], reviews=at_head, sent=sent)
+    check("nothing new at a head with a round exits 0 and says so",
+          "No review created" in out and "EXIT" not in out and not sent, out)
+
+
 def main():
     print("post_review.py")
     for name, test in sorted(globals().items()):
