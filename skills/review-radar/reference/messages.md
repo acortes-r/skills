@@ -61,7 +61,7 @@ The parenthesis lists the non-zero counts (`1 review`, `2 reviews`,
 | `events.commits` | `<author> subió <count> commits` (`1 commit`) |
 | `events.ci_failed` | `CI rojo en <sha>` |
 | `conflicts` | `tiene conflictos con la base` |
-| `approved` and `ci` is `success` | `CI verde` |
+| `approved`, `ci` is `success`, not `ready` | `CI verde` (`listo para mergear` already implies it) |
 | `ready` | `listo para mergear` |
 | `approved`, not ready, `threads.open` > 0 | `<n> hilos abiertos` |
 | `approved`, not ready, `threads.unverified` > 0 | `<n> hilos sin verificar` |
@@ -72,7 +72,8 @@ comments or bot reviews, `📥` commits. Only people's reviews count for `🔁` 
 `✅`; `approved`, `changes_requested`, and `ready` already ignore bots.
 
 ```
-✅ funnel#2907 · ana-r aprobó (4 reviews) · eli-r aprobó · cami-r comentó (2 reviews) · bots: 3 · CI verde · listo para mergear
+✅ funnel#2907 · ana-r aprobó (4 reviews) · eli-r aprobó · cami-r comentó (2 reviews) · bots: 3 · listo para mergear
+✅ purchase#3196 · beto-r aprobó · CI verde · 2 hilos abiertos
 ✅ purchase#3201 · beto-r aprobó · CI verde · 2 hilos sin verificar
 💬 integrations#1490 · dani-r: 3 comentarios · bots: 1
 🔁 funnel#2910 · angel-r pidió cambios · CI rojo en 9f3e21c
