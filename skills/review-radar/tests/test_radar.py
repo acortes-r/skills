@@ -811,9 +811,41 @@ def test_digest_one_line_per_pr():
     p = state(4, ci="failure", conflicts=True, changes_requested=True,
               changes_by=["colega-uno"], stale=True, idle_days=6)
     lines = mod.digest([p])["lines"]
-    check("a PR in several states shows once, under the highest one",
-          len(lines) == 1 and lines[0].startswith("❌ ")
-          and "conflictos" not in lines[0] and "cambios" not in lines[0], lines)
+    check("a PR in several states shows once: the highest leads, the rest follow in order",
+          lines == ["❌ <https://github.com/acme/tienda-pagos/pull/4|pagos#4>"
+                    f" · CI rojo en {HEAD[:7]} · conflictos"
+                    " · cambios pedidos por colega-uno · 6 d sin movimiento"], lines)
+
+
+LINK4 = "<https://github.com/acme/tienda-pagos/pull/4|pagos#4>"
+
+
+def test_digest_secondary_states():
+    p = state(4, conflicts=True, draft=True, draft_days=43, has_reviews=False)
+    check("conflicts and draft: conflicts leads, draft follows",
+          p["digest_line"] == f"⚠️ {LINK4} · tiene conflictos con la base · draft (43 d)",
+          p["digest_line"])
+    p = state(4, ci="failure", approved=True, stale=True, idle_days=72)
+    check("red CI, approved and stale: both secondaries, in order",
+          p["digest_line"] == f"❌ {LINK4} · CI rojo en {HEAD[:7]} · aprobado · 72 d sin movimiento",
+          p["digest_line"])
+    p = state(4, approved=True, ready=True, stale=True, idle_days=9)
+    check("ready to merge never carries secondaries",
+          p["digest_line"] == f"🚀 {LINK4} · listo para mergear", p["digest_line"])
+    p = state(4, draft=True, draft_days=3, stale=True, idle_days=5)
+    check("the main state is not repeated as a secondary",
+          p["digest_line"] == f"📝 {LINK4} · draft (3 d) · 5 d sin movimiento"
+          and p["digest_line"].count("draft") == 1, p["digest_line"])
+    p = state(4, stale=True, idle_days=4)
+    check("en review is never a secondary",
+          "en review" not in p["digest_line"]
+          and p["digest_line"] == f"💤 {LINK4} · sin movimiento (4 d)", p["digest_line"])
+    p = state(4, ci="failure", approved=True, events={
+        **NO_EVENTS,
+        "reviews": [{"author": "colega-dos", "state": "APPROVED", "reviews": 1, "comments": 0}]})
+    check("secondaries come before 🆕 and the new facts",
+          p["digest_line"] == f"❌ {LINK4} · CI rojo en {HEAD[:7]} · aprobado · 🆕 · colega-dos aprobó",
+          p["digest_line"])
 
 
 def test_digest_new_marker():

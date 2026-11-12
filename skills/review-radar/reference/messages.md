@@ -71,27 +71,32 @@ with their reviews and comments counted; bots add up into one `bots: <n>`.
 
 When the digest is due (`first_run_of_day` and `my_prs.daily_digest`, or a run
 that asked for `resumen`), this replaces `📬 Tus PRs`. One reply: `my-prs`
-`digest.title`, then its `digest.lines`, in order. Every open PR appears once,
-under its highest-priority `status`; a PR that moved since `since` adds `🆕`
-and the same facts it would have had in `📬`.
+`digest.title`, then its `digest.lines`, in order.
 
-| Order | Status | Line |
-|---|---|---|
-| 1 | ready | `🚀 <link> · listo para mergear` |
-| 2 | red CI | `❌ <link> · CI rojo en <head>` |
-| 3 | conflicts | `⚠️ <link> · tiene conflictos con la base` |
-| 4 | changes requested | `🔁 <link> · cambios pedidos por <logins>` |
-| 5 | no review yet | `⏳ <link> · esperando review` |
-| 6 | approved, not ready | `✅ <link> · aprobado, falta: <CI en curso / n hilos …>` |
-| 7 | draft | `📝 <link> · draft (<days> d)` |
-| 8 | no activity for `stale_days` | `💤 <link> · sin movimiento (<days> d)` |
-| 9 | anything else | `👀 <link> · en review` |
+Every open PR appears once: `<emoji> <link> · <main state> · <other states> ·
+🆕 · <facts>`. The emoji and main state are the highest-priority state that
+applies. The other states that also apply follow in the same order, each in
+its short form. A PR that moved since `since` ends with `🆕` and the same facts
+it would have had in `📬`.
+
+| Order | State | Main | Short form |
+|---|---|---|---|
+| 1 | ready | `🚀 listo para mergear` | never has other states |
+| 2 | red CI | `❌ CI rojo en <head>` | `CI rojo` |
+| 3 | conflicts | `⚠️ tiene conflictos con la base` | `conflictos` |
+| 4 | changes requested | `🔁 cambios pedidos por <logins>` | same |
+| 5 | no review yet | `⏳ esperando review` | same |
+| 6 | approved, not ready | `✅ aprobado, falta: <CI en curso / n hilos …>` | `aprobado` |
+| 7 | draft | `📝 draft (<days> d)` | same |
+| 8 | no activity for `stale_days` | `💤 sin movimiento (<days> d)` | `<days> d sin movimiento` |
+| 9 | none of the above | `👀 en review` | never a short form |
 
 ```
-📋 Tus PRs abiertos (4)
-🚀 <…/pull/3196|purchase#3196> · listo para mergear · 🆕 · beto-r aprobó
-⏳ <…/pull/3201|purchase#3201> · esperando review
-📝 <…/pull/2911|funnel#2911> · draft (6 d)
+📋 Tus PRs abiertos (5)
+🚀 <…/pull/3201|purchase#3201> · listo para mergear · 🆕 · beto-r aprobó
+❌ <…/pull/3142|purchase#3142> · CI rojo en 4c1e8d2 · aprobado · 72 d sin movimiento
+❌ <…/pull/3177|purchase#3177> · CI rojo en 7e2a5f0 · aprobado · 🆕 · beto-r aprobó
+⚠️ <…/pull/1533|integrations#1533> · tiene conflictos con la base · draft (43 d)
 💤 <…/pull/1488|integrations#1488> · sin movimiento (4 d)
 ```
 
