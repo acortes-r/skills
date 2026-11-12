@@ -89,9 +89,10 @@ comments or bot reviews, `📥` commits. Only people's reviews count for `🔁` 
 
 ## 🗓️ Pendientes
 
-Only when `first_run_of_day` and `my_prs.daily_digest`. Over every open PR
-`my-prs` returned, whether or not it had events. Skip an empty group; when all
-are empty, write `🗓️ Pendientes: nada`.
+Only when the digest is due: `first_run_of_day` and `my_prs.daily_digest`, or
+a run asked for `resumen`. Over every open PR `my-prs` returned, whether or not
+it had events. Skip an empty group; when all are empty, write
+`🗓️ Pendientes: nada`.
 
 ```
 🗓️ Pendientes

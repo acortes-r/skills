@@ -75,6 +75,16 @@
         "Skips the review rather than going ahead without locks.",
         "Posts no 🔒 line for that PR."
       ]
+    },
+    {
+      "id": 8,
+      "prompt": "Routine fired by API at 15:42 on a Wednesday with the text \"manda el resumen\". Mode dry. One of my PRs is approved, CI green, no review threads; another is a draft for 2 days. No candidates.",
+      "expected_output": "A start message and a 🗓️ Pendientes reply even though it is not the first run of the day, with `🚀 Listos para mergear: <that PR>` first and the draft under 📝 Drafts.",
+      "expectations": [
+        "Treats the run as a scheduled run whose digest is due because the payload contains resumen.",
+        "Does not apply the early exit.",
+        "Lists the ready PR under 🚀 Listos para mergear, before the other groups."
+      ]
     }
   ]
 }

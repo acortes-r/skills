@@ -19,6 +19,8 @@ requests are read-only.
    - **GitHub event:** pull request events on the configured repositories.
 3. Leave `run.mode: dry` for the first days: it lists what it would review
    without calling `review-changes`. Switch to `live` once the list looks right.
+4. Optional: fire the routine with a text that contains `resumen` to get the
+   🗓️ Pendientes digest at any hour.
 
 ## Configuration
 
@@ -30,7 +32,7 @@ mode, and the my-PRs options.
 
 | Trigger | Does |
 |---|---|
-| Schedule or "Run now" | GitHub + Slack candidates → gate → reviews; my-PR events; daily digest on the first run of the day |
+| Schedule or "Run now" | GitHub + Slack candidates → gate → reviews; my-PR events; daily digest on the first run of the day, or when the prompt says `resumen` |
 | Pull request event | that PR only: candidate check → gate → review |
 
 A run with nothing to review, no new activity on my PRs, and no digest due sends

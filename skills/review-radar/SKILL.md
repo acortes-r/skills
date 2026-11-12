@@ -65,8 +65,12 @@ Read `config.yml`. Run `$R since $C`; keep `since`, `first_run_of_day`, and
 
 The run is an **event run** when the routine's prompt carries a GitHub
 `pull_request` event (a payload with `pull_request` and `repository`, or the
-PR URL it names). Anything else (the schedule, "Run now") is a **scheduled
-run**.
+PR URL it names). Anything else (the schedule, "Run now", a fired trigger)
+is a **scheduled run**.
+
+The **digest is due** when `first_run_of_day` and `my_prs.daily_digest` hold,
+or when a scheduled run's prompt or fire payload contains `resumen` (any case):
+that run sends `🗓️ Pendientes` whatever the hour.
 
 ### 2. Event run
 
@@ -94,7 +98,7 @@ three hold:
 
 - no gate answered `review`;
 - no PR in `my-prs` has `has_events: true`;
-- the digest is not due (`first_run_of_day` and `my_prs.daily_digest`).
+- the digest is not due.
 
 ### 5. Start message
 
@@ -144,7 +148,7 @@ The PRs whose gate said `review`, in candidate order.
 One more reply in the thread, only when it has content:
 
 - `📬 Tus PRs`: one line per PR with `has_events: true`.
-- `🗓️ Pendientes`: only when `first_run_of_day` and `my_prs.daily_digest`.
+- `🗓️ Pendientes`: only when the digest is due.
 
 Errors that `candidates` or `my-prs` returned in `errors` go at the end of the
 reply they belong to, one `⚠️` line each.
