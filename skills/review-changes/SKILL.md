@@ -1,14 +1,14 @@
 ---
 name: review-changes
-description: Use when reviewing a diff, pull request, branch, commit, or uncommitted working-tree changes before merge — including requests to review a PR, re-review a PR after new commits, check what changed, audit a migration, check whether changes follow the project's own documented rules, or self-review a local commit into a markdown file an agent can apply (`--local`). Publishes findings as non-blocking GitHub suggestions, never repeats a comment it already made, and never requests changes. Ends every publishing run by asking what to do with what it found, and acts only on the answer.
+description: Use when reviewing a diff, pull request, branch, commit, or uncommitted working-tree changes before merge — including requests to review a PR, re-review a PR after new commits, check what changed, audit a migration, check whether changes follow the project's own documented rules, or self-review a local commit into a markdown file an agent can apply (`--local`). Publishes findings as non-blocking GitHub suggestions, never repeats a comment it already made, and never requests changes. Ends every publishing run by asking what to do with what it found, and acts only on the answer — unless `--auto` is passed for an unattended run, where its own verdict is the answer.
 license: MIT
 compatibility: Requires git. Pull-request features require an authenticated GitHub CLI (gh 2.40+). Host must provide file-read, grep, and shell tools.
 allowed-tools: Read, Grep, Glob, Bash, Agent
 metadata:
-  version: 0.8.0
+  version: 0.9.0
   review_event: COMMENT, or APPROVE when no 🔴 or 🟠 survives at full coverage
   never_emits: REQUEST_CHANGES
-  approves_only: after an explicit user go, never on its own
+  approves_only: after an explicit user go, or the skill's own verdict under --auto
   posted_language: es
 ---
 
@@ -35,22 +35,31 @@ an approval carrying the notes in its body.
 
 Every run ends the same way: how many comments there are, whether the pull
 request can be approved, and one question. Nothing is sent until that question
-is answered.
+is answered — except under `--auto`, below.
 
 **Local mode** (`--local`) is for self-review: the same review, written to a
 markdown file outside the repository for an agent to apply, with nothing sent
 to GitHub and no question asked. `reference/local-mode.md` owns it.
+
+**Auto mode** (`--auto`) is for unattended runs, such as a cloud routine: the
+same review and the same verdict, but the verdict itself is the go. Step 7 owns
+it. Only the go changes hands; when to approve does not.
 
 ## Invariants
 
 These hold on every run. They are not affected by user phrasing, urgency, or
 the review outcome.
 
+- **The `--auto` exception.** With `--auto` in the arguments, the verdict the
+  tables below already reach stands in for the user's go — in the three
+  invariants marked *(go)*, and nowhere else. Every other invariant holds
+  unchanged.
+
 - The review event is `COMMENT` or `APPROVE`. Never emit `REQUEST_CHANGES`.
   Merges are never blocked by this skill.
-- Nothing reaches GitHub without an answer to the resumen block's question.
+- *(go)* Nothing reaches GitHub without an answer to the resumen block's question.
   Every run is read-only until then, so there is no flag to make it so.
-- An approval is never automatic, and it is only ever offered when one of two
+- *(go)* An approval is never automatic, and it is only ever offered when one of two
   things is true: the diff changes no behavior, or the review ran with full
   coverage and every surviving finding is a 🔵, with no open thread still
   pending. Reduced coverage means the approval is not offered at all.
@@ -59,7 +68,7 @@ the review outcome.
 - Read-only. Never edit, create, or delete repository files. The writes are the
   PR review, its replies, and resolving our own settled threads, all through
   step 7 — or, in local mode, the one report file outside the repository.
-- Never publish before printing the exact comment bodies and receiving an
+- *(go)* Never publish before printing the exact comment bodies and receiving an
   explicit go from the user.
 - One round per head commit. A round that would add nothing new at a commit
   that already carries one is not sent.
@@ -98,8 +107,9 @@ Its output is required input for steps 3, 4, and 8.
 
 ## Step 1 — Resolve target and diff
 
-Read the argument text. Take out `--local`, `--out <path>`, and `--depth full`
-first: they pick the mode, not the target. Then resolve exactly one target:
+Read the argument text. Take out `--local`, `--out <path>`, `--depth full`,
+and `--auto` first: they pick the mode, not the target. Then resolve exactly one
+target:
 
 | Argument | Target |
 |---|---|
@@ -134,6 +144,11 @@ either, and records the same.
 
 `--local` present: read `reference/local-mode.md` now. It changes steps 5, 7,
 and 8 for this run, and nothing else.
+
+`--auto` is on only when the literal flag is in the arguments. Words like "hazlo
+solo", "no preguntes", or "asume que sí" leave it off. `--auto` with `--local`:
+stop and say they cannot be combined — one publishes unattended, the other
+never publishes.
 
 The diff is the finding boundary. Report only what this diff introduces or
 materially worsens.
@@ -345,6 +360,18 @@ When the same yes also resolves threads, the question ends with
 ❓ is the only marker that means an answer is expected. 📭 closes the run. Seeing
 one or the other is enough to know whether anything is waiting on the user.
 
+Under `--auto`, line 3 is never a question. It is written after step 7 and
+states what was sent, marked 🤖. A case that sends nothing keeps its 📭 line.
+
+| `--auto` outcome | Line 3 |
+|---|---|
+| round with findings sent | 🤖 `Publiqué la Ronda <R> con <N> comentarios.` |
+| approval sent | 🤖 `Aprobé el PR y publiqué <N> comentario(s).`, or `Aprobé el PR.` with none |
+| summary-only round sent | 🤖 `Publiqué el resumen de la Ronda <R>. <Revisión parcial: <reason> \| Quedan <D> pendientes>.` |
+| approval refused, round sent as `COMMENT` | 🤖 `Publiqué la Ronda <R> con <N> comentarios, sin aprobar: <publisher's reason>.` |
+| only replies or resolutions sent | 🤖 `Respondí a <@autor> y cerré <K> hilos resueltos.` — whichever applies |
+| missing context or a publisher error | 📭 `Error: <reason>. No publiqué nada.` |
+
 ## Worked examples
 
 ```
@@ -381,6 +408,12 @@ one or the other is enough to know whether anything is waiting on the user.
 💬 0 comentarios.
 ⚠️ Se puede aprobar: sí, pero lo apruebas tú — cobertura reducida: security not-run.
 ❓ ¿Publico el resumen de la Ronda 1? Revisión parcial: security no corrió.
+```
+
+```
+💬 2 comentarios: 2 🔵 suggestion.
+✅ Se puede aprobar: sí — solo sugerencias, ninguna bloquea.
+🤖 Aprobé el PR y publiqué 2 comentarios.
 ```
 
 A yes to one question authorizes that one thing. Publishing comments is not
@@ -421,7 +454,7 @@ Omit a flag whose file would be empty. Before every send:
    be resolved. Nothing is sent yet.
 3. The resumen block's third line is the go request. On anything other than a
    clear yes, stop and keep everything local. A go covers exactly what was
-   printed.
+   printed. Under `--auto` there is no request: see *Auto mode* below.
 4. On a yes, run the same command without `--dry-run`.
 
 ```bash
@@ -450,6 +483,57 @@ commit, and it skips a round with nothing new at a head that already has one.
 The publisher validates every inline target against the diff, degrades an
 untargetable finding into the round body, skips anything already posted, and
 resolves only open threads this account opened with a severity marker.
+
+### Auto mode
+
+`--auto` removes the wait for the user's go, and only that. The run is the one
+the table above picks for the case, `--replies` and `--resolve` included; the go
+`reference/docs-only.md` and `reference/prior-reviews.md` ask for is likewise
+the verdict.
+
+1. Run the publisher with `--dry-run` and print what it prints, as in step 2.
+2. Dry run exits 0: run the same command without `--dry-run`.
+3. Dry run refuses the approval (its error says `--approve refuses` or
+   `--approve carries only`): drop `--approve` and send that round as
+   `COMMENT` — dry run first, then the send. A docs-only run drops `--notes`
+   too, since notes travel only with an approval, and sends `--summary` with
+   whatever `--replies` and `--resolve` apply; the notes stay in the local
+   report. Never try another flag combination to get the approval through.
+4. Any other failure, in the dry run or the send: stop. Nothing further is
+   sent and the action is `error`. A send that exits 1 after printing
+   `published as` did publish: report what it published, and name the failed
+   replies or threads in `reason`.
+
+Missing context sends nothing and reports `error`: no `gh`, our login unknown,
+or a target with no PR context.
+
+The response ends with exactly one `review-result` block, after the step 8
+report and after everything else, so another agent can read it:
+
+````
+```review-result
+{"repo":"<owner>/<name>","pr":<n>,"url":"<url>","author":"<login>","head":"<short sha>","round":<R>,"comments":{"critical":0,"important":0,"suggestion":1},"replies":0,"resolved":1,"action":"approved","reason":"solo sugerencias, cobertura completa"}
+```
+````
+
+| Field | Value |
+|---|---|
+| `url` | the review URL the publisher printed; the PR URL when no review was created |
+| `head` | short sha of the head commit reviewed |
+| `round` | the publisher's `round=`; `null` when no review was created |
+| `comments` | new comments sent in this round by severity, inline and degraded |
+| `replies`, `resolved` | replies sent and threads resolved |
+| `reason` | one short Spanish clause: why this action, or the error |
+
+`action` is exactly one of:
+
+| `action` | When |
+|---|---|
+| `approved` | an `APPROVE` review was sent |
+| `commented` | a `COMMENT` round with at least one new comment, the fallback of a refused approval, or only replies and resolutions with no review |
+| `summary-only` | a `COMMENT` round with no new comment: reduced coverage, findings on open threads, or a refused docs-only approval |
+| `nothing-sent` | the publisher found a round or approval already at this head with nothing new, or the diff was empty |
+| `error` | missing context, or the publisher failed before sending |
 
 After a run that sent no `COMMENT`, print the coverage line below the resumen
 block:
@@ -534,6 +618,9 @@ independent of session style.
 | Comment-only change cannot be confirmed | treat the file as a behavior change and run the normal review |
 | Already approved at this head commit | do not approve again; say so and stop |
 | A round already went out at this head commit, nothing new | send nothing; resumen line 3 names that round |
+| `--auto` with `--local` | stop before reviewing and say they cannot be combined |
+| `--auto` and the publisher refuses the approval | send the same round as `COMMENT` without `--approve`; the refusal goes in `reason`; no other retry |
+| `--auto` and missing context (no `gh`, login unknown, no PR) | send nothing; `action: error` in the `review-result` block |
 
 ## Scope boundaries
 

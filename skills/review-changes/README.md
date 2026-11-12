@@ -6,6 +6,7 @@ already said, and publishes the rest as GitHub suggestions.
 
 **It never requests changes.** It can approve, and it never does so on its own:
 every run ends with a question, and nothing reaches GitHub until you answer it.
+The one exception is the literal `--auto` flag, where its own verdict answers.
 
 ## Install
 
@@ -51,6 +52,38 @@ apply and apply them.
 To have your coding agent offer this after every commit and before every PR,
 tell it: *implement the workflow in `AUTOREVIEW.md`*. The file describes the
 flow and how to install it in the agent's instruction file.
+
+### Unattended runs with `--auto`
+
+```text
+/review-changes --auto https://github.com/org/repo/pull/341
+```
+
+For a run nobody is watching, such as a Claude Code routine in the cloud. The
+review and its verdict are the same; the verdict becomes the go. The skill runs
+the publisher with `--dry-run`, and if that passes, sends the same command. It
+picks the run from the same table an interactive run uses, so it approves only
+what an interactive run would offer to approve.
+
+- Only the literal flag turns it on. "No preguntes" or "hazlo solo" do not.
+- `--auto` with `--local` stops: one publishes unattended, the other never
+  publishes.
+- A refused approval (a pending thread, say) goes out as a `COMMENT` round
+  instead, with the refusal as the reason. No other combination is tried.
+- Missing context — no `gh`, login unknown, no PR — sends nothing.
+
+Line 3 of the resumen block states what was sent, marked 🤖, instead of asking.
+The response always ends with one machine-readable block:
+
+````text
+```review-result
+{"repo":"org/repo","pr":341,"url":"https://github.com/org/repo/pull/341#pullrequestreview-1","author":"autora-ficticia","head":"abc1234","round":2,"comments":{"critical":0,"important":0,"suggestion":1},"replies":0,"resolved":1,"action":"approved","reason":"solo sugerencias, cobertura completa"}
+```
+````
+
+`action` is `approved`, `commented`, `summary-only`, `nothing-sent`, or
+`error`; `round` is `null` when no review was created; `reason` is a short
+Spanish clause.
 
 ## What it does differently
 
@@ -110,6 +143,7 @@ The markers are a closed set, one per line:
 |---|---|---|---|
 | ✅ | yes, and you can say so now | ❓ | a question; nothing is sent until you answer |
 | ⚠️ | yes, but not by this skill | 📭 | nothing to send; the run is closed |
+| | | 🤖 | `--auto` only: what was sent, no question |
 | 🚫 | no | | |
 | 🔒 | already approved at this head | | |
 | ❔ | unknown — no PR context | | |
@@ -263,8 +297,8 @@ stay distinct.
 ## Publishing, and checking first with `--dry-run`
 
 Nothing reaches a pull request without two gates: the skill prints the exact
-comment bodies and waits for your answer, and the publisher itself can be run
-without sending anything.
+comment bodies and waits for your answer (under `--auto`, its verdict answers),
+and the publisher itself can be run without sending anything.
 
 `--dry-run` belongs to the publisher. The skill needs no such flag: it asks
 before every write, so a run that is never answered sends nothing.
@@ -421,7 +455,7 @@ review-changes/
 │   └── security.md               # authz, injection, secrets
 ├── scripts/post_review.py        # deterministic publisher
 ├── tests/test_post_review.py     # 35 tests over the publisher, gh stubbed
-├── evals/evals.json              # 62 scenarios
+├── evals/evals.json              # 70 scenarios
 └── agents/openai.yaml            # host adapter
 ```
 
@@ -437,9 +471,9 @@ They stub `gh`, so nothing reaches GitHub. They cover the two guarantees that
 are expensive to get wrong — a comment is never posted twice, and the same head
 commit is never approved twice — plus round numbering, thread resolution, the
 flag combinations the publisher refuses, and the exit codes and printed lines
-an unattended run acts on.
+an unattended `--auto` run acts on.
 
-`evals/evals.json` is a different thing: 62 declarative scenarios describing what
+`evals/evals.json` is a different thing: 70 declarative scenarios describing what
 the skill should do. The repository has no eval runner, so they are read, not
 executed.
 
