@@ -832,10 +832,16 @@ def test_digest_secondary_states():
     p = state(4, approved=True, ready=True, stale=True, idle_days=9)
     check("ready to merge never carries secondaries",
           p["digest_line"] == f"🚀 {LINK4} · listo para mergear", p["digest_line"])
-    p = state(4, draft=True, draft_days=3, stale=True, idle_days=5)
+    p = state(4, approved=True, ci="pending", stale=True, idle_days=5)
     check("the main state is not repeated as a secondary",
-          p["digest_line"] == f"📝 {LINK4} · draft (3 d) · 5 d sin movimiento"
-          and p["digest_line"].count("draft") == 1, p["digest_line"])
+          p["digest_line"] == f"✅ {LINK4} · aprobado, falta: CI en curso · 5 d sin movimiento"
+          and p["digest_line"].count("aprobado") == 1, p["digest_line"])
+    p = state(4, draft=True, draft_days=3, stale=True, idle_days=5)
+    q = state(4, conflicts=True, draft=True, draft_days=3, stale=True, idle_days=5)
+    check("a draft never adds d sin movimiento; its draft days say it",
+          p["digest_line"] == f"📝 {LINK4} · draft (3 d)"
+          and q["digest_line"] == f"⚠️ {LINK4} · tiene conflictos con la base · draft (3 d)",
+          (p["digest_line"], q["digest_line"]))
     p = state(4, stale=True, idle_days=4)
     check("en review is never a secondary",
           "en review" not in p["digest_line"]

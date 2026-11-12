@@ -888,7 +888,7 @@ def pr_states(p):
     if p["draft"]:
         days = p["draft_days"] or 0
         states.append(("draft", "📝", f"draft ({days} d)", f"draft ({days} d)"))
-    if p["stale"]:
+    if p["stale"] and not p["draft"]:  # a draft's days already say it
         states.append(("stale", "💤", f"sin movimiento ({p['idle_days']} d)",
                        f"{p['idle_days']} d sin movimiento"))
     return states or [("in_review", "👀", "en review", None)]

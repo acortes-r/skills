@@ -88,7 +88,7 @@ it would have had in `📬`.
 | 5 | no review yet | `⏳ esperando review` | same |
 | 6 | approved, not ready | `✅ aprobado, falta: <CI en curso / n hilos …>` | `aprobado` |
 | 7 | draft | `📝 draft (<days> d)` | same |
-| 8 | no activity for `stale_days` | `💤 sin movimiento (<days> d)` | `<days> d sin movimiento` |
+| 8 | no activity for `stale_days` | `💤 sin movimiento (<days> d)` | `<days> d sin movimiento`, never on a draft |
 | 9 | none of the above | `👀 en review` | never a short form |
 
 ```
