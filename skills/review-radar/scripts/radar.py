@@ -866,37 +866,48 @@ STATUS_ORDER = ["ready", "ci_failed", "conflicts", "changes_requested",
                 "waiting_review", "approved", "draft", "stale", "in_review"]
 
 
-def pr_status(p):
-    """The one current state a PR is listed under, highest priority first."""
+def pr_states(p):
+    """Every state that applies, highest priority first: (key, emoji, main
+    text, secondary text). `in_review` is what is left when nothing applies."""
+    states = []
     if p["ready"]:
-        key, emoji, text = "ready", "🚀", "listo para mergear"
-    elif p["ci"] == "failure":
-        key, emoji, text = "ci_failed", "❌", f"CI rojo en {p['head']}"
-    elif p["conflicts"]:
-        key, emoji, text = "conflicts", "⚠️", "tiene conflictos con la base"
-    elif p["changes_requested"]:
-        key, emoji, text = ("changes_requested", "🔁",
-                            "cambios pedidos por " + ", ".join(p["changes_by"]))
-    elif p["needs_review"]:
-        key, emoji, text = "waiting_review", "⏳", "esperando review"
-    elif p["approved"]:
+        return [("ready", "🚀", "listo para mergear", None)]
+    if p["ci"] == "failure":
+        states.append(("ci_failed", "❌", f"CI rojo en {p['head']}", "CI rojo"))
+    if p["conflicts"]:
+        states.append(("conflicts", "⚠️", "tiene conflictos con la base", "conflictos"))
+    if p["changes_requested"]:
+        text = "cambios pedidos por " + ", ".join(p["changes_by"])
+        states.append(("changes_requested", "🔁", text, text))
+    if p["needs_review"]:
+        states.append(("waiting_review", "⏳", "esperando review", "esperando review"))
+    if p["approved"]:
         why = ["CI en curso"] if p["ci"] == "pending" else thread_facts(p)
         text = "aprobado, falta: " + (", ".join(why) or "algo que GitHub no dice")
-        key, emoji = "approved", "✅"
-    elif p["draft"]:
-        key, emoji, text = "draft", "📝", f"draft ({p['draft_days'] or 0} d)"
-    elif p["stale"]:
-        key, emoji, text = "stale", "💤", f"sin movimiento ({p['idle_days']} d)"
-    else:
-        key, emoji, text = "in_review", "👀", "en review"
+        states.append(("approved", "✅", text, "aprobado"))
+    if p["draft"]:
+        days = p["draft_days"] or 0
+        states.append(("draft", "📝", f"draft ({days} d)", f"draft ({days} d)"))
+    if p["stale"] and not p["draft"]:  # a draft's days already say it
+        states.append(("stale", "💤", f"sin movimiento ({p['idle_days']} d)",
+                       f"{p['idle_days']} d sin movimiento"))
+    return states or [("in_review", "👀", "en review", None)]
+
+
+def pr_status(p):
+    """The state a PR is listed under (the highest that applies), plus the
+    other states that also apply, in the same order."""
+    states = pr_states(p)
+    key, emoji, text, _ = states[0]
     return {"key": key, "rank": STATUS_ORDER.index(key), "emoji": emoji,
-            "text": text}
+            "text": text, "also": [extra for _, _, _, extra in states[1:]]}
 
 
 def digest_line(p):
-    """`<emoji> <link> · <state>`, plus `🆕` and the new facts when it moved."""
+    """`<emoji> <link> · <state> · <other states>`, then `🆕` and the new
+    facts when it moved since `since`."""
     status = p["status"]
-    parts = [f"{status['emoji']} {p['link']}", status["text"]]
+    parts = [f"{status['emoji']} {p['link']}", status["text"], *status["also"]]
     facts = event_facts(p["events"]) if p["has_events"] else []
     if status["key"] == "ci_failed" and p["events"]["ci_failed"]:
         facts = [f for f in facts if not f.startswith("CI rojo en ")]
