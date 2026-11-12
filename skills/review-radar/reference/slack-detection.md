@@ -50,5 +50,7 @@ Write `${TMPDIR:-/tmp}/review-radar-slack.json`, `[]` when nothing counted:
 [{"url": "https://github.com/<org>/<repo>/pull/<n>", "requested_by": "<display name>"}]
 ```
 
-`requested_by` is the message author's display name as the search result gives
-it. One entry per (link, author); `radar.py candidates --slack` merges the rest.
+`requested_by` is the message author's name as plain text, e.g. `Carlos
+Castro`. When the result gives only a user ID, read the name from the user's
+profile (the connector tool ending in `slack_read_user_profile`); keep the bare
+ID only if that fails. One entry per (link, author); `radar.py candidates --slack` merges the rest.

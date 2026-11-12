@@ -34,9 +34,10 @@ R="python3 <skill dir>/scripts/radar.py"; C="--config <skill dir>/config.yml"
 - GitHub receives writes only from `review-changes`. Everything about my own
   pull requests is read-only.
 - Slack receives writes only in `slack.notify_channel`: the start message and
-  replies in its own thread. Names in those messages are plain text (`@core`,
-  `@merchant-services`, a login); a `<@U…>` or `<!subteam^S…>` there would
-  ping someone.
+  replies in its own thread.
+- Every person and group in those messages is plain text that notifies no one:
+  `Carlos Castro`, a GitHub login, `@core`, `@merchant-services`. The DM never
+  carries `<@U…>` or `<!subteam^…>`.
 - One PR's failure is one `⚠️` line; every other PR is still processed.
 
 ## Slack operations
