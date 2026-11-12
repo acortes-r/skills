@@ -170,21 +170,28 @@ def graphql_blocked(err):
     return "403" in text and "not available from Claude Code sessions" in text
 
 
-def gh_pages(endpoint):
-    """Every item of a paginated REST list.
+PER_PAGE = 100
+MAX_PAGES = 100
 
-    `gh api --paginate` prints one JSON array per page back to back, which a
-    single json.loads cannot read past the first page.
+
+def gh_pages(endpoint):
+    """Every item of a paginated REST list, one `page=N` request at a time.
+
+    Not `gh api --paginate`: it follows GitHub's `Link` header, which names the
+    repository by numeric id (`repositories/<id>/...`), and the Claude Code
+    cloud proxy refuses those paths with 403 from page 2 on. A page shorter
+    than PER_PAGE is the last one.
     """
-    raw = gh(["api", endpoint, "--paginate"]) or "[]"
-    decoder, items, index = json.JSONDecoder(), [], 0
-    while index < len(raw):
-        if raw[index].isspace():
-            index += 1
-            continue
-        page, index = decoder.raw_decode(raw, index)
-        items.extend(page if isinstance(page, list) else [page])
-    return items
+    joiner = "&" if "?" in endpoint else "?"
+    items = []
+    for page in range(1, MAX_PAGES + 1):
+        batch = json.loads(gh(["api", f"{endpoint}{joiner}per_page={PER_PAGE}"
+                                      f"&page={page}"]) or "[]")
+        batch = batch if isinstance(batch, list) else [batch]
+        items.extend(batch)
+        if len(batch) < PER_PAGE:
+            return items
+    raise RuntimeError(f"{endpoint}: more than {MAX_PAGES} pages")
 
 
 def pull_request(repo, pr):

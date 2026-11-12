@@ -1,0 +1,59 @@
+{
+  "skill_name": "review-radar",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/review-radar. Scheduled run on a Tuesday at 11:07, mode dry. GitHub: one PR requests my review; one PR by a teammate I already reviewed at its current head. Slack: a teammate mentions the team group with a link to the first PR. My PRs: nothing new.",
+      "expected_output": "One start message in my DM marked as modo prueba with 2 found, 1 to review, 1 skipped; a thread reply with one 🔍 line (vía Slack) and one ⏭️ ya revisado line. review-changes is never invoked.",
+      "expectations": [
+        "Runs radar.py since before anything else and uses its since for the Slack search.",
+        "Passes the Slack links to radar.py candidates --slack and shows the first PR once, with both sources.",
+        "Runs radar.py gate for each candidate with its gate_source.",
+        "Writes only to the configured DM; does not invoke review-changes in dry mode.",
+        "Writes no <@…> or <!subteam^…> mention in the messages."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "/review-radar. Scheduled run at 14:07, not the first of the day. Every candidate is skipped by the gate and my PRs have no new events.",
+      "expected_output": "Nothing is sent and review-changes is not loaded.",
+      "expectations": [
+        "Applies the early exit: no review decision, no has_events PR, no digest due.",
+        "Sends no Slack message."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "Routine prompt with a GitHub pull_request event payload (action synchronize) for a teammate's PR in a configured repo, at 21:30. Mode live. The PR requests my review and has a new commit since my last round.",
+      "expected_output": "Only that PR is processed: candidates --pr, gate review, checkout through git fetch pull/<n>/head, review-changes --auto with the PR URL, then a start message and one result line from the review-result block. No Slack search, no my-PRs section, no digest.",
+      "expectations": [
+        "Treats the run as an event run even outside office hours.",
+        "Checks out the head with git fetch origin pull/<n>/head, not gh pr checkout.",
+        "Invokes review-changes with --auto and the PR URL from the clone's directory.",
+        "Builds the result line from the review-result block's action, round, head and comment counts.",
+        "Skips Slack detection and my PRs."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "/review-radar. Mode live, max_reviews_per_run 2, and the gate says review for 3 PRs. The second review-changes run ends without a review-result block.",
+      "expected_output": "Two reviews run; the second gets a ⚠️ error line; the third gets a ⏳ line and is left for the next run.",
+      "expectations": [
+        "Runs at most max_reviews_per_run reviews.",
+        "Records the missing review-result block as an error and continues.",
+        "Lists the PR over the cap with ⏳ and the start message notes it for the next run."
+      ]
+    },
+    {
+      "id": 5,
+      "prompt": "/review-radar. First scheduled run of the day, Monday 9:07. One of my PRs got an approval since Friday with CI green and two review threads read over REST with unknown resolution; another is a draft for 6 days; another has had no activity for 4 days.",
+      "expected_output": "A 📬 Tus PRs line saying the approval and CI verde with 2 hilos sin verificar (not listo para mergear), and a 🗓️ Pendientes section with the draft and the stale PR.",
+      "expectations": [
+        "Uses since Friday 18:07 from radar.py since.",
+        "Does not mark the approved PR as ready to merge while threads are unverified.",
+        "Adds the digest because first_run_of_day and daily_digest are true.",
+        "Posts nothing on GitHub for my own PRs."
+      ]
+    }
+  ]
+}

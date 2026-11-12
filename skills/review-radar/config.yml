@@ -1,0 +1,27 @@
+github:
+  org: reservamos
+  me: acortes-r
+  repos: [platform-purchase, saas-integrations, platform-funnel]
+  request_teams: [core]          # review pedido a este team = pedido a mí
+  my_team_authors:               # Merchant Services
+    [a10003202, acortes-r, carlitos, alejandrocen-r, JazminDominguez, rowend]
+slack:
+  me: U0774V5HCJF
+  team_groups: [S0C022VG8MT]     # menciones a estos grupos = solicitud a mí
+  team_group_names:              # cómo nombrarlos en el DM, sin hacer ping
+    S0C022VG8MT: merchant-services
+  include_dms: true
+  notify_channel: U0774V5HCJF    # DM conmigo
+schedule:
+  tz: America/Merida
+  days: [1, 2, 3, 4, 5]          # lunes a viernes
+  hours: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+  minute: 7
+run:
+  mode: dry                      # dry | live
+  max_reviews_per_run: 5
+my_prs:
+  enabled: true
+  stale_days: 3
+  daily_digest: true
+  group_bot_comments: true       # comentarios de bots en una sola línea

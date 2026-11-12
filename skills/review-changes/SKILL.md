@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires git. Pull-request features require an authenticated GitHub CLI (gh 2.40+). Host must provide file-read, grep, and shell tools.
 allowed-tools: Read, Grep, Glob, Bash, Agent
 metadata:
-  version: 0.9.1
+  version: 0.9.3
   review_event: COMMENT, or APPROVE when no 🔴 or 🟠 survives at full coverage
   never_emits: REQUEST_CHANGES
   approves_only: after an explicit user go, or the skill's own verdict under --auto
@@ -231,8 +231,11 @@ advice to split the work into separate branches.
 ## Step 4 — Verify
 
 Read `reference/verify.md` and run the pass it describes. Delegate it to a
-subagent when the host offers one; otherwise run it as its own explicit block
-and record `verify: inline` in the ledger.
+subagent when the host offers one; otherwise run it as its own explicit block.
+Either way the ledger row reads `ran`; an inline pass adds `inline` to its
+detail. Inline is full coverage: the verification happened, only without
+isolation. This is what a run inside a subagent gets, such as one launched by
+an unattended routine.
 
 The verifier confirms, adjusts severity with evidence, or discards. It never
 adds findings.
@@ -323,7 +326,8 @@ does withhold it: those name something broken or risky, and an approval carrying
 one would argue with itself.
 
 **Full coverage** means every routed profile and the verify pass are `ran` in
-the ledger, with no `reduced-context:*` recorded. Anything less and the approval
+the ledger (a verify pass run inline is `ran`), with no `reduced-context:*`
+recorded. Anything less and the approval
 is not offered: an approval that says "I found nothing" is only honest when the
 looking actually happened.
 

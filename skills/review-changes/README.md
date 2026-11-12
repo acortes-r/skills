@@ -454,14 +454,14 @@ review-changes/
 │   ├── frontend.md               # client state, a11y, weight
 │   └── security.md               # authz, injection, secrets
 ├── scripts/post_review.py        # deterministic publisher; pr, diff, threads reads
-├── tests/test_post_review.py     # 43 tests over the publisher, gh stubbed
-├── evals/evals.json              # 70 scenarios
+├── tests/test_post_review.py     # 44 tests over the publisher, gh stubbed
+├── evals/evals.json              # 71 scenarios
 └── agents/openai.yaml            # host adapter
 ```
 
 ## Tests
 
-The publisher has 43 tests. No network, no dependencies, no test runner:
+The publisher has 44 tests. No network, no dependencies, no test runner:
 
 ```bash
 python3 skills/review-changes/tests/test_post_review.py
@@ -474,7 +474,7 @@ flag combinations the publisher refuses, and the exit codes and printed lines
 an unattended `--auto` run acts on, and the GraphQL → CCR → REST fallback for
 review threads.
 
-`evals/evals.json` is a different thing: 70 declarative scenarios describing what
+`evals/evals.json` is a different thing: 71 declarative scenarios describing what
 the skill should do. The repository has no eval runner, so they are read, not
 executed.
 
@@ -496,6 +496,10 @@ threads come from GraphQL when it answers, from the session's CCR route
 (`ccr/review_threads`, resolved through `ccr/comments/<id>/resolve`) when it is
 refused, and from plain REST comments, with resolution state unknown, when
 neither is available.
+
+Lists are paged by hand (`per_page=100&page=N`), never with `gh api
+--paginate`: its next-page links name the repository by numeric id, and the
+cloud proxy refuses those from page 2 on.
 
 ## Scope
 

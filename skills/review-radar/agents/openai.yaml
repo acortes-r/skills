@@ -1,0 +1,21 @@
+interface:
+  display_name: "Review Radar"
+  short_description: "Finds the PRs waiting for my review in GitHub and Slack, runs review-changes --auto on the ones that deserve it, and reports my own PRs' activity to my Slack DM"
+  default_prompt: "Use review-radar for this routine run."
+
+policy:
+  allow_implicit_invocation: false
+  read_only_repository: true
+  write_scopes:
+    # Only the configured DM: the start message and replies in its thread.
+    - slack_direct_message
+  gated_actions:
+    # GitHub writes happen inside review-changes --auto, under its own rules,
+    # and only with run.mode: live.
+    - invoke_review_changes_auto
+  forbidden_actions:
+    - pull_request_comment
+    - pull_request_approve
+    - pull_request_request_changes
+    - pull_request_merge
+    - slack_reply_in_others_threads
