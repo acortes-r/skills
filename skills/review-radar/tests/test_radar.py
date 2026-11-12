@@ -50,7 +50,8 @@ schedule:
   minute: 7
 run:
   mode: dry
-  max_reviews_per_run: 5
+  max_reviews_per_run: 3
+  lock_minutes: 90
 my_prs:
   enabled: true
   stale_days: 3
@@ -735,6 +736,142 @@ def test_my_prs_error_does_not_stop_others():
     check("a failing repo is recorded and the rest still reported",
           [p["number"] for p in data["prs"]] == [30]
           and data["errors"][0]["repo"] == "acme/tienda-web", data)
+
+
+# --- lock -------------------------------------------------------------------
+
+LOCK_PR = "acme/tienda-pagos#7"
+NOW_EPOCH = mod.parse_time(NOW).timestamp()
+
+
+def ts(minutes_ago, micro=0):
+    return f"{NOW_EPOCH - minutes_ago * 60:.0f}.{micro:06d}"
+
+
+def lock_line(minutes_ago, thread="T1", sha=HEAD[:7], pr=LOCK_PR, micro=0):
+    return {"ts": ts(minutes_ago, micro), "thread": thread,
+            "text": f"🔒 revisando pagos#7 @ {sha} [rr:{pr}@{sha}]"}
+
+
+def result_line(minutes_ago, thread="T1", sha=HEAD[:7], pr=LOCK_PR, mark="✅"):
+    return {"ts": ts(minutes_ago), "thread": thread,
+            "text": f"{mark} pagos#7 · colega-uno · Ronda 2 ({sha}) · aprobado [rr:{pr}@{sha}]"}
+
+
+def lock(lines, *extra, sha=HEAD, raw=None):
+    path = TMP / "locks.json"
+    path.write_text(raw if raw is not None else json.dumps(lines, ensure_ascii=False))
+    data, code, calls = run(cfg_args("lock", "--lines", str(path), "--pr", LOCK_PR,
+                                     "--sha", sha, "--now", NOW, *extra), {})
+    assert not calls, calls
+    return data, code
+
+
+def test_lock_none_goes():
+    data, code = lock([])
+    check("no lock lines → go, with the token to use",
+          code == 0 and data["decision"] == "go"
+          and data["token"] == f"[rr:{LOCK_PR}@{HEAD[:7]}]", data)
+
+
+def test_lock_held_by_another_run():
+    data, _ = lock([lock_line(20)])
+    check("a live 🔒 from another run → skip",
+          data["decision"] == "skip"
+          and data["reason"] == "ya en revisión en otra corrida"
+          and data["held_by"]["thread"] == "T1", data)
+
+
+def test_lock_released_by_its_result():
+    for mark in ("✅", "💬", "📝", "📭", "⚠️"):
+        data, _ = lock([lock_line(20), result_line(5, mark=mark)])
+        check(f"a later {mark} result with the same token in the same thread → go",
+              data["decision"] == "go", data)
+
+
+def test_lock_result_in_another_thread_does_not_release():
+    data, _ = lock([lock_line(20, thread="T2"), result_line(5, thread="T1")])
+    check("a result in another run's thread leaves this 🔒 held",
+          data["decision"] == "skip" and data["held_by"]["thread"] == "T2", data)
+
+
+def test_lock_earlier_result_does_not_release():
+    data, _ = lock([result_line(30), lock_line(20)])
+    check("a result older than the 🔒 does not release it",
+          data["decision"] == "skip", data)
+
+
+def test_lock_expired_goes():
+    data, _ = lock([lock_line(91)])
+    check("a 🔒 older than lock_minutes with no result is abandoned → go",
+          data["decision"] == "go", data)
+
+
+def test_lock_other_sha_still_blocks():
+    data, _ = lock([lock_line(20, sha="abc1234")], sha="def5678")
+    check("the lock is per PR: another sha of the same PR still blocks",
+          data["decision"] == "skip" and data["held_by"]["sha"] == "abc1234"
+          and data["token"].endswith("@def5678]"), data)
+
+
+def test_lock_other_pr_goes():
+    data, _ = lock([lock_line(20, pr="acme/tienda-pagos#8")])
+    check("a 🔒 on another PR does not block", data["decision"] == "go", data)
+
+
+def test_lock_tie_break_oldest_wins():
+    lines = [lock_line(2, thread="T1", micro=100), lock_line(2, thread="T2", micro=200)]
+    older, _ = lock(lines, "--mine", ts(2, 100))
+    newer, _ = lock(lines, "--mine", ts(2, 200))
+    check("two 🔒 on the same PR: the older ts goes, the newer skips",
+          older["decision"] == "go" and newer["decision"] == "skip"
+          and newer["held_by"]["thread"] == "T1", (older, newer))
+
+
+def test_lock_expired_does_not_win_tie_break():
+    lines = [lock_line(95, thread="T1"), lock_line(2, thread="T2")]
+    data, _ = lock(lines, "--mine", ts(2))
+    check("an abandoned older 🔒 does not beat a live newer one",
+          data["decision"] == "go", data)
+
+
+def test_lock_mine_does_not_block():
+    data, _ = lock([lock_line(1)], "--mine", ts(1))
+    check("my own 🔒 (--mine) does not block me", data["decision"] == "go", data)
+
+
+def test_lock_ignores_lines_without_a_lock_mark():
+    token = f"[rr:{LOCK_PR}@{HEAD[:7]}]"
+    lines = [{"ts": ts(10), "thread": "T1",
+              "text": f"⏭️ pagos#7 · colega-uno · omitido: ya en revisión en otra corrida\n"
+                      f"🔍 pagos#7 · revisaría {token}"}]
+    data, _ = lock(lines)
+    check("⏭️ and other lines never lock", data["decision"] == "go", data)
+
+
+def test_lock_released_by_losing_run_skip():
+    skipped = {"ts": ts(1), "thread": "T2",
+               "text": f"⏭️ pagos#7 · colega-uno · omitido: ya en revisión en otra corrida "
+                       f"[rr:{LOCK_PR}@{HEAD[:7]}]"}
+    lines = [lock_line(3, thread="T1"), result_line(2, thread="T1"),
+             lock_line(3, thread="T2", micro=5), skipped]
+    data, _ = lock(lines)
+    check("the run that lost the tie-break releases its 🔒 with its ⏭️ line",
+          data["decision"] == "go", data)
+
+
+def test_lock_multiline_message():
+    lines = [{"ts": ts(10), "thread": "T1",
+              "text": "algo antes\n" + lock_line(10)["text"]}]
+    data, _ = lock(lines)
+    check("a 🔒 on any line of a message counts", data["decision"] == "skip", data)
+
+
+def test_lock_unreadable_skips():
+    data, code = lock(None, raw="{no es json")
+    check("unreadable lock lines → skip: candados ilegibles",
+          code == 0 and data["decision"] == "skip"
+          and data["reason"] == "candados ilegibles", data)
 
 
 def main():

@@ -5,6 +5,8 @@
     radar.py candidates --config config.yml [--pr owner/repo#n] [--slack file.json]
     radar.py gate       --config config.yml --pr owner/repo#n --source github|slack
     radar.py my-prs     --config config.yml --since <iso8601> [--now <iso8601>]
+    radar.py lock       --config config.yml --lines locks.json --pr owner/repo#n
+                        --sha <short> [--mine <ts>] [--now <iso8601>]
 
 GitHub is read over REST only (`gh api`): cloud sessions answer GraphQL with
 403. Review threads come from review-changes' `post_review.py threads`, which
@@ -13,6 +15,7 @@ already picks GraphQL, CCR, or REST. Standard library only.
 
 import argparse
 import datetime as dt
+import decimal
 import importlib.util
 import json
 import pathlib
@@ -788,6 +791,90 @@ def cmd_my_prs(args):
     show(out)
 
 
+# --- lock -------------------------------------------------------------------
+# Two runs that overlap must not review the same PR at once. Each live review
+# posts `🔒 … [rr:<owner>/<repo>#<n>@<sha>]` in its run's thread before it
+# starts; the line that ends that PR in the same thread (a result, or the ⏭️ of
+# a run that lost the tie-break) carries the same token and releases it. The
+# agent reads those lines from my DM; this decides. The lock is per PR: the sha
+# is only data.
+
+LOCK_MINUTES = 90
+TOKEN = re.compile(r"\[rr:([\w.-]+/[\w.-]+#\d+)@([0-9a-fA-F]+)\]")
+RELEASE_MARKS = ("✅", "💬", "📝", "📭", "⚠", "⏭")
+
+
+def slack_ts(value):
+    try:
+        return decimal.Decimal(str(value))
+    except (decimal.InvalidOperation, ValueError):
+        raise ValueError(f"bad Slack ts {value!r}")
+
+
+def lock_lines(path):
+    """Every line holding a token: (ts, thread, kind, pr, sha)."""
+    data = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        raise ValueError("expected a JSON list")
+    out = []
+    for entry in data:
+        ts = slack_ts(entry["ts"])
+        thread = str(entry.get("thread") or entry["ts"])
+        for line in str(entry.get("text") or "").splitlines():
+            line = line.strip()
+            match = TOKEN.search(line)
+            if not match:
+                continue
+            if line.startswith("🔒"):
+                kind = "lock"
+            elif line.startswith(RELEASE_MARKS):
+                kind = "result"
+            else:
+                continue
+            out.append((ts, thread, kind, match.group(1), match.group(2)[:7]))
+    return out
+
+
+def decide_lock(lines, pr, now, minutes, mine=None):
+    """Skip when another run holds a live, unreleased lock on this PR that is
+    older than mine (any age when I have none yet)."""
+    oldest = decimal.Decimal(str(now.timestamp() - minutes * 60))
+    held = []
+    for ts, thread, kind, ref, sha in lines:
+        if kind != "lock" or ref != pr or ts < oldest:
+            continue
+        if mine is not None and ts >= mine:
+            continue
+        released = any(k == "result" and r == ref and th == thread and t > ts
+                       for t, th, k, r, _ in lines)
+        if not released:
+            held.append({"ts": str(ts), "thread": thread, "sha": sha})
+    if held:
+        return "skip", "ya en revisión en otra corrida", min(held, key=lambda h: slack_ts(h["ts"]))
+    return "go", "sin candado vigente", None
+
+
+def cmd_lock(args):
+    cfg = load_config(args.config)
+    owner, repo, number = parse_ref(args.pr)
+    pr = f"{owner}/{repo}#{number}"
+    minutes = int((cfg.get("run") or {}).get("lock_minutes") or LOCK_MINUTES)
+    now = parse_time(args.now) if args.now else dt.datetime.now(dt.timezone.utc)
+    token = f"[rr:{pr}@{args.sha[:7]}]"
+    try:
+        lines = lock_lines(args.lines)
+        mine = slack_ts(args.mine) if args.mine else None
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as err:
+        show({"pr": pr, "token": token, "decision": "skip",
+              "reason": "candados ilegibles", "error": str(err)})
+        return
+    decision, reason, held = decide_lock(lines, pr, now, minutes, mine)
+    out = {"pr": pr, "token": token, "decision": decision, "reason": reason}
+    if held:
+        out["held_by"] = held
+    show(out)
+
+
 # --- CLI --------------------------------------------------------------------
 
 
@@ -817,6 +904,15 @@ def main(argv=None):
     p.add_argument("--since", required=True)
     p.add_argument("--now")
     p.set_defaults(run=cmd_my_prs)
+
+    p = sub.add_parser("lock")
+    p.add_argument("--config", required=True)
+    p.add_argument("--lines", required=True, help="JSON list of {ts, thread, text}")
+    p.add_argument("--pr", required=True, help="owner/repo#n")
+    p.add_argument("--sha", required=True, help="the head being reviewed")
+    p.add_argument("--mine", help="ts of my own 🔒 line")
+    p.add_argument("--now")
+    p.set_defaults(run=cmd_lock)
 
     args = parser.parse_args(argv)
     args.run(args)

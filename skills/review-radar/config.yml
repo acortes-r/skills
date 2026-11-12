@@ -19,7 +19,8 @@ schedule:
   minute: 7
 run:
   mode: dry                      # dry | live
-  max_reviews_per_run: 5
+  max_reviews_per_run: 3          # corridas cortas, menos encimadas
+  lock_minutes: 90               # un 🔒 sin resultado vence después de esto
 my_prs:
   enabled: true
   stale_days: 3
