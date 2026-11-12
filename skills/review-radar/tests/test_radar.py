@@ -1,0 +1,552 @@
+#!/usr/bin/env python3
+"""Tests for scripts/radar.py. No network, no dependencies, no pytest.
+
+    python3 skills/review-radar/tests/test_radar.py
+
+Every test replaces the module's `gh` (and `review_threads`) with stubs, so
+nothing reaches GitHub. All logins, repos, and ids are invented. A failure
+prints the case that broke and exits non-zero.
+"""
+
+import contextlib
+import importlib.util
+import io
+import json
+import pathlib
+import sys
+import tempfile
+
+HERE = pathlib.Path(__file__).resolve().parent
+RADAR = HERE.parent / "scripts" / "radar.py"
+
+
+def load_radar():
+    spec = importlib.util.spec_from_file_location("radar", RADAR)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+mod = load_radar()
+TMP = pathlib.Path(tempfile.mkdtemp(prefix="radar_tests_"))
+
+CONFIG = """\
+github:
+  org: acme
+  me: yo-ficticio
+  repos: [tienda-pagos, tienda-web]
+  request_teams: [nucleo]        # pedido al team = pedido a mí
+  my_team_authors:
+    [colega-uno, colega-dos, yo-ficticio]
+slack:
+  me: U000FAKE01
+  team_groups: [S000FAKE01]
+  include_dms: true
+  notify_channel: U000FAKE01
+schedule:
+  tz: America/Merida
+  days: [1, 2, 3, 4, 5]
+  hours: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+  minute: 7
+run:
+  mode: dry
+  max_reviews_per_run: 5
+my_prs:
+  enabled: true
+  stale_days: 3
+  daily_digest: true
+  group_bot_comments: true
+"""
+CFG_PATH = TMP / "config.yml"
+CFG_PATH.write_text(CONFIG)
+
+HEAD = "f00dfacecafe1234"
+OLD = "0ldc0mm1t5678abc"
+SINCE = "2026-03-10T09:07:00-06:00"
+NOW = "2026-03-10T10:07:30-06:00"
+
+failures = []
+
+
+def check(name, condition, detail=""):
+    if condition:
+        print(f"  ok    {name}")
+    else:
+        print(f"  FAIL  {name}\n        {detail}")
+        failures.append(name)
+
+
+def pull(number=7, author="colega-uno", draft=False, state="open", merged=False,
+         reviewers=(), teams=(), head=HEAD, **extra):
+    data = {"number": number, "title": f"Cambio ficticio {number}",
+            "user": {"login": author, "type": "User"}, "draft": draft,
+            "state": state, "merged": merged,
+            "merged_at": "2026-03-09T12:00:00Z" if merged else None,
+            "requested_reviewers": [{"login": r} for r in reviewers],
+            "requested_teams": [{"slug": t} for t in teams],
+            "head": {"sha": head}, "html_url": f"https://example.test/pull/{number}",
+            "created_at": "2026-03-01T15:00:00Z", "updated_at": "2026-03-10T15:30:00Z"}
+    data.update(extra)
+    return data
+
+
+def review(author, state="COMMENTED", commit=OLD, at="2026-03-09T18:00:00Z",
+           body="Ronda 1 · cambios ficticios"):
+    return {"user": {"login": author, "type": "User"}, "state": state,
+            "commit_id": commit, "submitted_at": at, "body": body}
+
+
+def comment(author, at="2026-03-10T15:40:00Z", bot=False):
+    return {"user": {"login": author, "type": "Bot" if bot else "User"},
+            "created_at": at}
+
+
+def commit_item(author, at="2026-03-10T15:45:00Z", parents=1):
+    return {"author": {"login": author},
+            "commit": {"author": {"name": author, "date": at},
+                       "committer": {"date": at}},
+            "parents": [{"sha": "p"}] * parents}
+
+
+def run(argv, routes, threads=("graphql", [])):
+    """Run main() with gh answering from `routes` (endpoint prefix -> data)."""
+    calls = []
+
+    def fake_gh(args):
+        assert args[0] == "api", f"only REST api calls allowed: {args!r}"
+        assert "graphql" not in args, f"GraphQL is forbidden: {args!r}"
+        endpoint = args[1]
+        calls.append(endpoint)
+        path = endpoint.split("?", 1)[0]
+        if path in routes:
+            value = routes[path]
+            if isinstance(value, Exception):
+                raise value
+            return json.dumps(value)
+        raise AssertionError(f"unexpected gh call: {endpoint}")
+
+    originals = mod.gh, mod.review_threads
+    mod.gh = fake_gh
+    mod.review_threads = lambda full, number: threads
+    buffer = io.StringIO()
+    code = 0
+    try:
+        with contextlib.redirect_stdout(buffer):
+            try:
+                mod.main(argv)
+            except SystemExit as exit_signal:
+                code = exit_signal.code
+    finally:
+        mod.gh, mod.review_threads = originals
+    text = buffer.getvalue()
+    try:
+        data = json.loads(text)
+    except ValueError:
+        data = {"raw": text}
+    return data, code, calls
+
+
+def cfg_args(*rest):
+    return [rest[0], "--config", str(CFG_PATH), *rest[1:]]
+
+
+# --- config -----------------------------------------------------------------
+
+
+def test_config_subset_parses():
+    cfg = mod.load_config(str(CFG_PATH))
+    check("flow list on the line after its key parses",
+          cfg["github"]["my_team_authors"] == ["colega-uno", "colega-dos", "yo-ficticio"],
+          cfg["github"])
+    check("comments are stripped and scalars typed",
+          cfg["github"]["request_teams"] == ["nucleo"]
+          and cfg["schedule"]["minute"] == 7 and cfg["my_prs"]["enabled"] is True,
+          cfg)
+
+
+# --- since ------------------------------------------------------------------
+
+
+def since_at(now):
+    data, _, _ = run(cfg_args("since", "--now", now), {})
+    return data
+
+
+def test_since_mid_morning():
+    data = since_at("2026-03-10T11:07:20-06:00")  # Tuesday, scheduled run
+    check("since mid-morning is the previous slot",
+          data["since"] == "2026-03-10T10:07:00-06:00"
+          and data["first_run_of_day"] is False, data)
+
+
+def test_since_first_run_of_day():
+    data = since_at("2026-03-10T09:07:05-06:00")
+    check("first run of the day reaches back to yesterday's last slot",
+          data["since"] == "2026-03-09T18:07:00-06:00"
+          and data["first_run_of_day"] is True, data)
+
+
+def test_since_monday_after_weekend():
+    data = since_at("2026-03-16T09:08:00-06:00")  # Monday
+    check("Monday 9:07 covers from Friday 18:07",
+          data["since"] == "2026-03-13T18:07:00-06:00"
+          and data["first_run_of_day"] is True, data)
+
+
+def test_since_out_of_hours():
+    data = since_at("2026-03-10T20:00:00-06:00")
+    check("a run at 20:00 starts at the last slot, 18:07, and is no digest run",
+          data["since"] == "2026-03-10T18:07:00-06:00"
+          and data["first_run_of_day"] is False and data["scheduled"] is False, data)
+
+
+def test_since_late_trigger_keeps_its_slot():
+    data = since_at("2026-03-10T10:25:00-06:00")
+    check("a routine that fires 18 minutes late still covers from the slot before",
+          data["since"] == "2026-03-10T09:07:00-06:00", data)
+
+
+def test_since_accepts_utc():
+    data = since_at("2026-03-10T16:07:10Z")  # 10:07 in Merida
+    check("--now in UTC is converted to the schedule's zone",
+          data["since"] == "2026-03-10T09:07:00-06:00", data)
+
+
+# --- candidates -------------------------------------------------------------
+
+
+EMPTY_WEB = {"repos/acme/tienda-web/pulls": []}
+
+
+def test_candidates_requested_user_and_team():
+    routes = {"repos/acme/tienda-pagos/pulls": [
+                  pull(1, reviewers=["yo-ficticio"]),
+                  pull(2, teams=["nucleo"]),
+                  pull(3, teams=["otro-team"]),
+                  pull(4, author="yo-ficticio")],
+              "repos/acme/tienda-pagos/pulls/3/reviews": [review("colega-dos")],
+              **EMPTY_WEB}
+    data, _, calls = run(cfg_args("candidates"), routes)
+    got = {c["number"]: c["why"] for c in data["candidates"]}
+    check("requested to me or to a configured team counts; others do not",
+          got == {1: "review pedido a yo-ficticio", 2: "review pedido a @nucleo"}, got)
+    check("my own PRs are left to my-prs",
+          "repos/acme/tienda-pagos/pulls/4/reviews" not in calls, calls)
+
+
+def test_candidates_re_review():
+    routes = {"repos/acme/tienda-pagos/pulls": [pull(5)],
+              "repos/acme/tienda-pagos/pulls/5/reviews": [review("yo-ficticio")],
+              **EMPTY_WEB}
+    data, _, _ = run(cfg_args("candidates"), routes)
+    check("a PR I reviewed before stays a candidate after GitHub drops me (b)",
+          [c["number"] for c in data["candidates"]] == [5]
+          and data["candidates"][0]["sources"] == ["github"], data)
+
+
+def reply(author, commit=OLD, at="2026-03-09T19:00:00Z"):
+    """The empty COMMENTED review GitHub creates for a reply on a thread."""
+    return review(author, "COMMENTED", commit=commit, at=at, body="")
+
+
+def test_candidates_thread_reply_is_not_a_review():
+    routes = {"repos/acme/tienda-pagos/pulls": [pull(6, author="externo-ficticio")],
+              "repos/acme/tienda-pagos/pulls/6/reviews": [reply("yo-ficticio")],
+              **EMPTY_WEB}
+    data, _, _ = run(cfg_args("candidates"), routes)
+    check("a thread reply on an outside author's PR does not make it a candidate",
+          data["candidates"] == [], data)
+
+
+def test_candidates_single_pr():
+    routes = {"repos/acme/tienda-web/pulls/9": pull(9, reviewers=["yo-ficticio"])}
+    data, _, calls = run(cfg_args("candidates", "--pr", "acme/tienda-web#9"), routes)
+    check("--pr evaluates only that PR",
+          [c["pr"] for c in data["candidates"]] == ["acme/tienda-web#9"]
+          and calls == ["repos/acme/tienda-web/pulls/9"], calls)
+    data, _, _ = run(cfg_args("candidates", "--pr", "acme/otro-repo#3"), {})
+    check("--pr on an unconfigured repo is not a candidate",
+          data["not_candidate"]["reason"] == "repo no configurado", data)
+
+
+def test_candidates_dedupe_github_and_slack():
+    slack = TMP / "slack.json"
+    slack.write_text(json.dumps([
+        {"url": "https://github.com/acme/tienda-pagos/pull/1", "requested_by": "Colega Uno"},
+        {"pr": "acme/tienda-pagos#1", "requested_by": "Colega Dos"},
+        {"url": "https://github.com/acme/tienda-web/pull/12", "requested_by": "Colega Dos"},
+    ]))
+    routes = {"repos/acme/tienda-pagos/pulls": [pull(1, reviewers=["yo-ficticio"])],
+              "repos/acme/tienda-web/pulls": [],
+              "repos/acme/tienda-web/pulls/12": pull(12, author="externo-ficticio")}
+    data, _, _ = run(cfg_args("candidates", "--slack", str(slack)), routes)
+    by_pr = {c["pr"]: c for c in data["candidates"]}
+    both = by_pr.get("acme/tienda-pagos#1", {})
+    only = by_pr.get("acme/tienda-web#12", {})
+    check("a PR found in GitHub and Slack appears once with both sources",
+          len(data["candidates"]) == 2 and both.get("sources") == ["github", "slack"]
+          and both.get("requested_by") == ["Colega Uno", "Colega Dos"], data)
+    check("a Slack-only PR keeps its requester and gates as slack",
+          only.get("sources") == ["slack"] and only.get("gate_source") == "slack"
+          and only.get("author") == "externo-ficticio", only)
+
+
+# --- gate -------------------------------------------------------------------
+
+
+def gate(routes, pr="acme/tienda-pagos#7", source="github"):
+    data, code, calls = run(cfg_args("gate", "--pr", pr, "--source", source), routes)
+    return data, calls
+
+
+def gate_routes(pr_data, reviews=(), compare=None):
+    routes = {"repos/acme/tienda-pagos/pulls/7": pr_data,
+              "repos/acme/tienda-pagos/pulls/7/reviews": list(reviews)}
+    if compare is not None:
+        routes[f"repos/acme/tienda-pagos/compare/{OLD}...{HEAD}"] = compare
+    return routes
+
+
+def test_gate_rules_in_order():
+    cases = [
+        ("repo no configurado", {}, "acme/otro-repo#7", "github"),
+        ("mergeado", gate_routes(pull(merged=True, state="closed")), None, "github"),
+        ("cerrado", gate_routes(pull(state="closed")), None, "github"),
+        ("draft", gate_routes(pull(draft=True)), None, "github"),
+        ("PR propio", gate_routes(pull(author="yo-ficticio")), None, "github"),
+        ("autor fuera de Merchant Services",
+         gate_routes(pull(author="externo-ficticio")), None, "github"),
+        (f"ya revisado en {HEAD[:7]}",
+         gate_routes(pull(), [review("yo-ficticio", commit=HEAD)]), None, "github"),
+        ("solo merges de la base",
+         gate_routes(pull(), [review("yo-ficticio")],
+                     {"commits": [commit_item("colega-uno", parents=2)] * 2}),
+         None, "github"),
+    ]
+    for reason, routes, pr, source in cases:
+        data, _ = gate(routes, pr or "acme/tienda-pagos#7", source)
+        check(f"gate skips: {reason}",
+              data.get("decision") == "skip" and data.get("reason") == reason, data)
+
+
+def test_gate_reviews():
+    data, _ = gate(gate_routes(pull()))
+    check("a teammate's PR I never reviewed gets a first review",
+          data["decision"] == "review" and data["reason"] == "primera revisión", data)
+    data, _ = gate(gate_routes(pull(), [review("yo-ficticio")],
+                               {"commits": [commit_item("colega-uno", parents=2),
+                                            commit_item("colega-uno")]}))
+    check("a real commit after my last review asks for a re-review",
+          data["decision"] == "review"
+          and data["reason"] == f"commits nuevos desde {OLD[:7]}", data)
+
+
+def test_gate_outside_author():
+    data, _ = gate(gate_routes(pull(author="externo-ficticio")), source="slack")
+    check("Slack requests skip the author filter",
+          data["decision"] == "review", data)
+    data, _ = gate(gate_routes(pull(author="externo-ficticio"),
+                               [review("yo-ficticio")],
+                               {"commits": [commit_item("externo-ficticio")]}))
+    check("an outside author I already reviewed is re-reviewed (b)",
+          data["decision"] == "review", data)
+
+
+def test_gate_ignores_thread_replies():
+    data, _ = gate(gate_routes(pull(author="externo-ficticio"), [reply("yo-ficticio")]))
+    check("a thread reply does not count as having reviewed an outside author",
+          data["reason"] == "autor fuera de Merchant Services", data)
+    data, _ = gate(gate_routes(pull(), [reply("yo-ficticio", commit=HEAD)]))
+    check("a teammate's PR with only my thread reply gets a first review",
+          data["decision"] == "review" and data["reason"] == "primera revisión", data)
+    data, _ = gate(gate_routes(pull(), [review("yo-ficticio", commit=OLD),
+                                        reply("yo-ficticio", commit=HEAD)],
+                               {"commits": [commit_item("colega-uno")]}))
+    check("a reply at the head does not count as reviewing the head",
+          data["decision"] == "review"
+          and data["reason"] == f"commits nuevos desde {OLD[:7]}", data)
+    data, _ = gate(gate_routes(pull(), [review("yo-ficticio", "CHANGES_REQUESTED",
+                                               commit=HEAD, body="")]))
+    check("a change request with no body is a real review",
+          data["reason"] == f"ya revisado en {HEAD[:7]}", data)
+
+
+def test_gate_uses_latest_review():
+    reviews = [review("yo-ficticio", commit=HEAD, at="2026-03-08T10:00:00Z"),
+               review("yo-ficticio", commit=OLD, at="2026-03-09T10:00:00Z")]
+    data, _ = gate(gate_routes(pull(), reviews,
+                               {"commits": [commit_item("colega-uno")]}))
+    check("the latest of my reviews decides, not the first",
+          data["decision"] == "review", data)
+
+
+# --- my-prs -----------------------------------------------------------------
+
+
+def my_routes(pr_data, reviews=(), review_comments=(), issue_comments=(),
+              commits=(), checks=None, status=None, timeline=()):
+    n = pr_data["number"]
+    base = f"repos/acme/tienda-pagos/pulls/{n}"
+    sha = pr_data["head"]["sha"]
+    return {"repos/acme/tienda-pagos/pulls": [pr_data, pull(99, author="colega-dos")],
+            "repos/acme/tienda-web/pulls": [],
+            base: pr_data,
+            f"{base}/reviews": list(reviews),
+            f"{base}/comments": list(review_comments),
+            f"repos/acme/tienda-pagos/issues/{n}/comments": list(issue_comments),
+            f"{base}/commits": list(commits),
+            f"repos/acme/tienda-pagos/commits/{sha}/check-runs":
+                {"check_runs": checks if checks is not None else
+                 [{"status": "completed", "conclusion": "success",
+                   "completed_at": "2026-03-10T15:50:00Z"}]},
+            f"repos/acme/tienda-pagos/commits/{sha}/status":
+                status or {"state": "pending", "statuses": []},
+            f"repos/acme/tienda-pagos/issues/{n}/timeline": list(timeline)}
+
+
+def my_prs(routes, threads=("graphql", [])):
+    data, _, calls = run(cfg_args("my-prs", "--since", SINCE, "--now", NOW),
+                         routes, threads)
+    return data, calls
+
+
+def mine(**extra):
+    return pull(30, author="yo-ficticio", **extra)
+
+
+def test_my_prs_only_mine():
+    data, _ = my_prs(my_routes(mine()))
+    check("only PRs I authored are reported",
+          [p["number"] for p in data["prs"]] == [30], data)
+
+
+def test_my_prs_reviews():
+    data, _ = my_prs(my_routes(mine(), reviews=[
+        review("colega-uno", "APPROVED", at="2026-03-10T15:20:00Z"),
+        review("colega-dos", "CHANGES_REQUESTED", at="2026-03-10T15:25:00Z", body=""),
+        review("colega-dos", "COMMENTED", at="2026-03-10T15:26:00Z", body=""),
+        review("colega-dos", "APPROVED", at="2026-03-09T10:00:00Z"),
+        review("yo-ficticio", "COMMENTED", at="2026-03-10T15:30:00Z", body="gracias")]))
+    pr = data["prs"][0]
+    check("new reviews by others, with author and state, after since",
+          pr["events"]["reviews"] == [{"author": "colega-uno", "state": "APPROVED"},
+                                      {"author": "colega-dos",
+                                       "state": "CHANGES_REQUESTED"}], pr["events"])
+    check("a CHANGES_REQUESTED that is still the reviewer's latest blocks",
+          pr["changes_requested"] is True and pr["ready"] is False, pr)
+
+
+def test_my_prs_comments_grouped_and_bots():
+    data, _ = my_prs(my_routes(mine(),
+        review_comments=[comment("colega-uno"), comment("colega-uno"),
+                         comment("yo-ficticio"),
+                         comment("colega-uno", at="2026-03-10T14:00:00Z")],
+        issue_comments=[comment("colega-uno"), comment("revisor-ia[bot]"),
+                        comment("lint-ficticio", bot=True)]))
+    entries = data["prs"][0]["events"]["comments"]
+    check("comments group by author with counts, mine and old ones ignored",
+          entries[0] == {"author": "colega-uno", "count": 3, "bot": False}, entries)
+    check("bot comments (type Bot or [bot] login) fold into one entry",
+          entries[1] == {"author": "bots", "count": 2, "bot": True,
+                         "logins": ["lint-ficticio", "revisor-ia[bot]"]}, entries)
+
+
+def test_my_prs_commits_by_others():
+    data, _ = my_prs(my_routes(mine(), commits=[
+        commit_item("colega-dos"), commit_item("colega-dos"),
+        commit_item("yo-ficticio"), commit_item("colega-dos", at="2026-03-09T10:00:00Z")]))
+    check("new commits by others are counted per author; mine are ignored",
+          data["prs"][0]["events"]["commits"] == [{"author": "colega-dos", "count": 2}],
+          data["prs"][0]["events"])
+
+
+def test_my_prs_ci_and_conflicts():
+    red = [{"status": "completed", "conclusion": "failure",
+            "completed_at": "2026-03-10T15:55:00Z"}]
+    data, _ = my_prs(my_routes(mine(mergeable_state="dirty"), checks=red))
+    pr = data["prs"][0]
+    check("CI that failed after since is an event with the head sha",
+          pr["ci"] == "failure" and pr["events"]["ci_failed"] == {"sha": HEAD[:7]}
+          and pr["has_events"] is True, pr)
+    check("mergeable_state dirty reports conflicts", pr["conflicts"] is True, pr)
+    old_red = [{"status": "completed", "conclusion": "failure",
+                "completed_at": "2026-03-09T10:00:00Z"}]
+    data, _ = my_prs(my_routes(mine(), checks=old_red))
+    check("CI that was already red before since is not a new event",
+          data["prs"][0]["events"]["ci_failed"] is None, data["prs"][0])
+    data, _ = my_prs(my_routes(mine(), status={"state": "failure", "statuses": [
+        {"state": "failure", "updated_at": "2026-03-10T15:58:00Z"}]}))
+    check("a failing commit status also counts as red CI",
+          data["prs"][0]["ci"] == "failure", data["prs"][0])
+
+
+def test_my_prs_ready_to_merge():
+    approved = [review("colega-uno", "APPROVED", at="2026-03-10T15:20:00Z")]
+    data, _ = my_prs(my_routes(mine(), reviews=approved),
+                     threads=("graphql", [{"isResolved": True}]))
+    check("approved, CI green, every thread resolved: ready to merge",
+          data["prs"][0]["ready"] is True, data["prs"][0])
+    data, _ = my_prs(my_routes(mine(), reviews=approved),
+                     threads=("graphql", [{"isResolved": False}]))
+    check("an open thread keeps it from ready",
+          data["prs"][0]["ready"] is False
+          and data["prs"][0]["threads"] == {"open": 1, "unverified": 0}, data["prs"][0])
+    data, _ = my_prs(my_routes(mine(), reviews=approved),
+                     threads=("rest", [{"isResolved": False}, {"isResolved": False}]))
+    check("threads read over REST are unverified and never ready",
+          data["prs"][0]["ready"] is False
+          and data["prs"][0]["threads"] == {"open": None, "unverified": 2},
+          data["prs"][0])
+    data, _ = my_prs(my_routes(mine(), reviews=approved), threads=("rest", []))
+    check("REST with no threads at all is ready", data["prs"][0]["ready"] is True,
+          data["prs"][0])
+    pending = [{"status": "in_progress", "conclusion": None}]
+    data, calls = my_prs(my_routes(mine(), reviews=approved, checks=pending))
+    check("pending CI is not ready and is not reported as red",
+          data["prs"][0]["ready"] is False and data["prs"][0]["ci"] == "pending"
+          and data["prs"][0]["events"]["ci_failed"] is None, data["prs"][0])
+
+
+def test_my_prs_drafts_and_stale():
+    data, _ = my_prs(my_routes(
+        mine(draft=True, updated_at="2026-03-05T12:00:00Z"),
+        timeline=[{"event": "convert_to_draft", "created_at": "2026-03-04T12:00:00Z"},
+                  {"event": "convert_to_draft", "created_at": "2026-03-06T12:00:00Z"}]))
+    pr = data["prs"][0]
+    check("draft days count from the latest convert_to_draft",
+          pr["draft"] is True and pr["draft_days"] == 4, pr)
+    check("days without activity come from updated_at and flag stale",
+          pr["idle_days"] == 5 and pr["stale"] is True, pr)
+    check("a draft is never listed as waiting for review",
+          pr["needs_review"] is False and pr["has_events"] is False, pr)
+    data, _ = my_prs(my_routes(mine(created_at="2026-03-08T12:00:00Z")))
+    pr = data["prs"][0]
+    check("a ready PR with no review at all needs review, and is not stale",
+          pr["needs_review"] is True and pr["has_reviews"] is False
+          and pr["stale"] is False, pr)
+
+
+def test_my_prs_error_does_not_stop_others():
+    routes = my_routes(mine())
+    routes["repos/acme/tienda-web/pulls"] = RuntimeError("gh: HTTP 502")
+    data, _ = my_prs(routes)
+    check("a failing repo is recorded and the rest still reported",
+          [p["number"] for p in data["prs"]] == [30]
+          and data["errors"][0]["repo"] == "acme/tienda-web", data)
+
+
+def main():
+    print("radar.py")
+    for name, test in sorted(globals().items()):
+        if name.startswith("test_") and callable(test):
+            test()
+    print()
+    if failures:
+        print(f"{len(failures)} failed: {', '.join(failures)}")
+        return 1
+    print("all passed")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
