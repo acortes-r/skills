@@ -50,7 +50,8 @@ schedule:
   minute: 7
 run:
   mode: dry
-  max_reviews_per_run: 5
+  max_reviews_per_run: 3
+  lock_minutes: 90
 my_prs:
   enabled: true
   stale_days: 3
@@ -728,6 +729,177 @@ def test_my_prs_drafts_and_stale():
           and pr["stale"] is False, pr)
 
 
+# --- DM lines for my PRs ----------------------------------------------------
+
+NO_EVENTS = {"reviews": [], "comments": [], "commits": [], "ci_failed": None}
+
+
+def state(number=30, **extra):
+    """A my-prs entry with nothing going on; `extra` sets what differs."""
+    p = {"pr": f"acme/tienda-pagos#{number}", "repo": "tienda-pagos",
+         "label": "pagos", "number": number,
+         "link": mod.slack_link("acme", "tienda-pagos", number),
+         "head": HEAD[:7], "has_events": False, "events": dict(NO_EVENTS),
+         "ci": "success", "conflicts": False, "approved": False,
+         "changes_requested": False, "changes_by": [],
+         "threads": {"open": None, "unverified": 0}, "ready": False,
+         "draft": False, "draft_days": None, "idle_days": 0, "stale": False,
+         "has_reviews": True, "needs_review": False}
+    p.update(extra)
+    p["has_events"] = any(p["events"].values())
+    p["status"] = mod.pr_status(p)
+    p["line"] = mod.events_line(p) if p["has_events"] else None
+    p["digest_line"] = mod.digest_line(p)
+    return p
+
+
+def test_links_are_slack_links():
+    check("a PR is written <url|label#n> with the github.com URL",
+          mod.slack_link("acme", "tienda-pagos", 7)
+          == "<https://github.com/acme/tienda-pagos/pull/7|pagos#7>")
+    data, _, _ = run(cfg_args("candidates"), {"search/issues": search(requested=[hit(7)]),
+                                              "repos/acme/tienda-pagos/pulls/7":
+                                                  pull(7, reviewers=["yo-ficticio"])})
+    check("candidates carry the link",
+          data["candidates"][0]["link"]
+          == "<https://github.com/acme/tienda-pagos/pull/7|pagos#7>", data)
+    data, _ = my_prs(my_routes(mine()))
+    pr = data["prs"][0]
+    check("my-prs lines start with the link",
+          pr["link"] == "<https://github.com/acme/tienda-pagos/pull/30|pagos#30>"
+          and pr["digest_line"].split(" · ")[0].endswith(pr["link"]), pr)
+    data, code, _ = run(cfg_args("gate", "--pr", "acme/tienda-pagos#7",
+                                 "--source", "github"),
+                        {"repos/acme/tienda-pagos/pulls/7": RuntimeError("gh: HTTP 502")})
+    check("a gate error still carries the link",
+          code == 1 and data["link"] == "<https://github.com/acme/tienda-pagos/pull/7|pagos#7>",
+          data)
+
+
+def test_digest_order():
+    approved_with_threads = state(9, approved=True,
+                                  threads={"open": 2, "unverified": 0})
+    prs = [state(1),
+           state(2, stale=True, idle_days=5),
+           state(3, draft=True, draft_days=4, has_reviews=False),
+           approved_with_threads,
+           state(5, needs_review=True, has_reviews=False),
+           state(6, changes_requested=True, changes_by=["colega-dos"]),
+           state(7, conflicts=True),
+           state(8, ci="failure"),
+           state(10, approved=True, ready=True)]
+    lines = mod.digest(prs)["lines"]
+    expected = ["🚀 <https://github.com/acme/tienda-pagos/pull/10|pagos#10> · listo para mergear",
+                f"❌ <https://github.com/acme/tienda-pagos/pull/8|pagos#8> · CI rojo en {HEAD[:7]}",
+                "⚠️ <https://github.com/acme/tienda-pagos/pull/7|pagos#7> · tiene conflictos con la base",
+                "🔁 <https://github.com/acme/tienda-pagos/pull/6|pagos#6> · cambios pedidos por colega-dos",
+                "⏳ <https://github.com/acme/tienda-pagos/pull/5|pagos#5> · esperando review",
+                "✅ <https://github.com/acme/tienda-pagos/pull/9|pagos#9> · aprobado, falta: 2 hilos abiertos",
+                "📝 <https://github.com/acme/tienda-pagos/pull/3|pagos#3> · draft (4 d)",
+                "💤 <https://github.com/acme/tienda-pagos/pull/2|pagos#2> · sin movimiento (5 d)",
+                "👀 <https://github.com/acme/tienda-pagos/pull/1|pagos#1> · en review"]
+    check("📋 lists every PR in status order", lines == expected, lines)
+    check("📋 title counts every open PR",
+          mod.digest(prs)["title"] == "📋 Tus PRs abiertos (9)", mod.digest(prs))
+    pending = state(11, approved=True, ci="pending")
+    check("approved and waiting on CI says why it is not ready",
+          pending["digest_line"].endswith("aprobado, falta: CI en curso"),
+          pending["digest_line"])
+
+
+def test_digest_one_line_per_pr():
+    p = state(4, ci="failure", conflicts=True, changes_requested=True,
+              changes_by=["colega-uno"], stale=True, idle_days=6)
+    lines = mod.digest([p])["lines"]
+    check("a PR in several states shows once: the highest leads, the rest follow in order",
+          lines == ["❌ <https://github.com/acme/tienda-pagos/pull/4|pagos#4>"
+                    f" · CI rojo en {HEAD[:7]} · conflictos"
+                    " · cambios pedidos por colega-uno · 6 d sin movimiento"], lines)
+
+
+LINK4 = "<https://github.com/acme/tienda-pagos/pull/4|pagos#4>"
+
+
+def test_digest_secondary_states():
+    p = state(4, conflicts=True, draft=True, draft_days=43, has_reviews=False)
+    check("conflicts and draft: conflicts leads, draft follows",
+          p["digest_line"] == f"⚠️ {LINK4} · tiene conflictos con la base · draft (43 d)",
+          p["digest_line"])
+    p = state(4, ci="failure", approved=True, stale=True, idle_days=72)
+    check("red CI, approved and stale: both secondaries, in order",
+          p["digest_line"] == f"❌ {LINK4} · CI rojo en {HEAD[:7]} · aprobado · 72 d sin movimiento",
+          p["digest_line"])
+    p = state(4, approved=True, ready=True, stale=True, idle_days=9)
+    check("ready to merge never carries secondaries",
+          p["digest_line"] == f"🚀 {LINK4} · listo para mergear", p["digest_line"])
+    p = state(4, approved=True, ci="pending", stale=True, idle_days=5)
+    check("the main state is not repeated as a secondary",
+          p["digest_line"] == f"✅ {LINK4} · aprobado, falta: CI en curso · 5 d sin movimiento"
+          and p["digest_line"].count("aprobado") == 1, p["digest_line"])
+    p = state(4, draft=True, draft_days=3, stale=True, idle_days=5)
+    q = state(4, conflicts=True, draft=True, draft_days=3, stale=True, idle_days=5)
+    check("a draft never adds d sin movimiento; its draft days say it",
+          p["digest_line"] == f"📝 {LINK4} · draft (3 d)"
+          and q["digest_line"] == f"⚠️ {LINK4} · tiene conflictos con la base · draft (3 d)",
+          (p["digest_line"], q["digest_line"]))
+    p = state(4, stale=True, idle_days=4)
+    check("en review is never a secondary",
+          "en review" not in p["digest_line"]
+          and p["digest_line"] == f"💤 {LINK4} · sin movimiento (4 d)", p["digest_line"])
+    p = state(4, ci="failure", approved=True, events={
+        **NO_EVENTS,
+        "reviews": [{"author": "colega-dos", "state": "APPROVED", "reviews": 1, "comments": 0}]})
+    check("secondaries come before 🆕 and the new facts",
+          p["digest_line"] == f"❌ {LINK4} · CI rojo en {HEAD[:7]} · aprobado · 🆕 · colega-dos aprobó",
+          p["digest_line"])
+
+
+def test_digest_new_marker():
+    moved = state(4, approved=True, ready=True, events={
+        **NO_EVENTS,
+        "reviews": [{"author": "colega-uno", "state": "APPROVED", "reviews": 2,
+                     "comments": 0}],
+        "commits": [{"author": "colega-dos", "count": 1}]})
+    still = state(5, needs_review=True)
+    check("a PR that moved since `since` carries 🆕 and its facts",
+          moved["digest_line"] == "🚀 <https://github.com/acme/tienda-pagos/pull/4|pagos#4>"
+          " · listo para mergear · 🆕 · colega-uno aprobó (2 reviews) · colega-dos subió 1 commit",
+          moved["digest_line"])
+    check("a PR that did not move has no 🆕", "🆕" not in still["digest_line"],
+          still["digest_line"])
+    red = state(6, ci="failure", events={**NO_EVENTS, "ci_failed": {"sha": HEAD[:7]}})
+    check("new red CI is not repeated after the status says it",
+          red["digest_line"].count("CI rojo") == 1 and red["digest_line"].endswith("🆕"),
+          red["digest_line"])
+
+
+def test_events_line():
+    p = state(2907, approved=True, ready=True, events={
+        **NO_EVENTS,
+        "reviews": [{"author": "colega-uno", "state": "APPROVED", "reviews": 4, "comments": 0},
+                    {"author": "colega-dos", "state": "APPROVED", "reviews": 1, "comments": 0},
+                    {"author": "colega-tres", "state": "COMMENTED", "reviews": 2, "comments": 3},
+                    {"author": "bots", "logins": ["ci-bot[bot]"], "count": 2, "bot": True}],
+        "comments": [{"author": "bots", "logins": ["ci-bot[bot]"], "count": 1, "bot": True}]})
+    check("📬 line: one fact per person, bots summed, ready last",
+          p["line"] == "✅ <https://github.com/acme/tienda-pagos/pull/2907|pagos#2907>"
+          " · colega-uno aprobó (4 reviews) · colega-dos aprobó"
+          " · colega-tres comentó (2 reviews, 3 comentarios) · bots: 3 · listo para mergear",
+          p["line"])
+    p = state(3196, approved=True, threads={"open": None, "unverified": 2}, events={
+        **NO_EVENTS,
+        "reviews": [{"author": "colega-uno", "state": "APPROVED", "reviews": 1, "comments": 0}]})
+    check("📬 line: approved, CI green, unverified threads",
+          p["line"] == "✅ <https://github.com/acme/tienda-pagos/pull/3196|pagos#3196>"
+          " · colega-uno aprobó · CI verde · 2 hilos sin verificar", p["line"])
+    p = state(1490, events={**NO_EVENTS, "comments": [
+        {"author": "colega-dos", "count": 1, "bot": False}]})
+    check("📬 line: a single comment",
+          p["line"] == "💬 <https://github.com/acme/tienda-pagos/pull/1490|pagos#1490>"
+          " · colega-dos: 1 comentario", p["line"])
+    check("a PR with no events has no 📬 line", state(1)["line"] is None)
+
+
 def test_my_prs_error_does_not_stop_others():
     routes = my_routes(mine())
     routes["repos/acme/tienda-web/pulls"] = RuntimeError("gh: HTTP 502")
@@ -735,6 +907,142 @@ def test_my_prs_error_does_not_stop_others():
     check("a failing repo is recorded and the rest still reported",
           [p["number"] for p in data["prs"]] == [30]
           and data["errors"][0]["repo"] == "acme/tienda-web", data)
+
+
+# --- lock -------------------------------------------------------------------
+
+LOCK_PR = "acme/tienda-pagos#7"
+NOW_EPOCH = mod.parse_time(NOW).timestamp()
+
+
+def ts(minutes_ago, micro=0):
+    return f"{NOW_EPOCH - minutes_ago * 60:.0f}.{micro:06d}"
+
+
+def lock_line(minutes_ago, thread="T1", sha=HEAD[:7], pr=LOCK_PR, micro=0):
+    return {"ts": ts(minutes_ago, micro), "thread": thread,
+            "text": f"🔒 revisando pagos#7 @ {sha} [rr:{pr}@{sha}]"}
+
+
+def result_line(minutes_ago, thread="T1", sha=HEAD[:7], pr=LOCK_PR, mark="✅"):
+    return {"ts": ts(minutes_ago), "thread": thread,
+            "text": f"{mark} pagos#7 · colega-uno · Ronda 2 ({sha}) · aprobado [rr:{pr}@{sha}]"}
+
+
+def lock(lines, *extra, sha=HEAD, raw=None):
+    path = TMP / "locks.json"
+    path.write_text(raw if raw is not None else json.dumps(lines, ensure_ascii=False))
+    data, code, calls = run(cfg_args("lock", "--lines", str(path), "--pr", LOCK_PR,
+                                     "--sha", sha, "--now", NOW, *extra), {})
+    assert not calls, calls
+    return data, code
+
+
+def test_lock_none_goes():
+    data, code = lock([])
+    check("no lock lines → go, with the token to use",
+          code == 0 and data["decision"] == "go"
+          and data["token"] == f"[rr:{LOCK_PR}@{HEAD[:7]}]", data)
+
+
+def test_lock_held_by_another_run():
+    data, _ = lock([lock_line(20)])
+    check("a live 🔒 from another run → skip",
+          data["decision"] == "skip"
+          and data["reason"] == "ya en revisión en otra corrida"
+          and data["held_by"]["thread"] == "T1", data)
+
+
+def test_lock_released_by_its_result():
+    for mark in ("✅", "💬", "📝", "📭", "⚠️"):
+        data, _ = lock([lock_line(20), result_line(5, mark=mark)])
+        check(f"a later {mark} result with the same token in the same thread → go",
+              data["decision"] == "go", data)
+
+
+def test_lock_result_in_another_thread_does_not_release():
+    data, _ = lock([lock_line(20, thread="T2"), result_line(5, thread="T1")])
+    check("a result in another run's thread leaves this 🔒 held",
+          data["decision"] == "skip" and data["held_by"]["thread"] == "T2", data)
+
+
+def test_lock_earlier_result_does_not_release():
+    data, _ = lock([result_line(30), lock_line(20)])
+    check("a result older than the 🔒 does not release it",
+          data["decision"] == "skip", data)
+
+
+def test_lock_expired_goes():
+    data, _ = lock([lock_line(91)])
+    check("a 🔒 older than lock_minutes with no result is abandoned → go",
+          data["decision"] == "go", data)
+
+
+def test_lock_other_sha_still_blocks():
+    data, _ = lock([lock_line(20, sha="abc1234")], sha="def5678")
+    check("the lock is per PR: another sha of the same PR still blocks",
+          data["decision"] == "skip" and data["held_by"]["sha"] == "abc1234"
+          and data["token"].endswith("@def5678]"), data)
+
+
+def test_lock_other_pr_goes():
+    data, _ = lock([lock_line(20, pr="acme/tienda-pagos#8")])
+    check("a 🔒 on another PR does not block", data["decision"] == "go", data)
+
+
+def test_lock_tie_break_oldest_wins():
+    lines = [lock_line(2, thread="T1", micro=100), lock_line(2, thread="T2", micro=200)]
+    older, _ = lock(lines, "--mine", ts(2, 100))
+    newer, _ = lock(lines, "--mine", ts(2, 200))
+    check("two 🔒 on the same PR: the older ts goes, the newer skips",
+          older["decision"] == "go" and newer["decision"] == "skip"
+          and newer["held_by"]["thread"] == "T1", (older, newer))
+
+
+def test_lock_expired_does_not_win_tie_break():
+    lines = [lock_line(95, thread="T1"), lock_line(2, thread="T2")]
+    data, _ = lock(lines, "--mine", ts(2))
+    check("an abandoned older 🔒 does not beat a live newer one",
+          data["decision"] == "go", data)
+
+
+def test_lock_mine_does_not_block():
+    data, _ = lock([lock_line(1)], "--mine", ts(1))
+    check("my own 🔒 (--mine) does not block me", data["decision"] == "go", data)
+
+
+def test_lock_ignores_lines_without_a_lock_mark():
+    token = f"[rr:{LOCK_PR}@{HEAD[:7]}]"
+    lines = [{"ts": ts(10), "thread": "T1",
+              "text": f"⏭️ pagos#7 · colega-uno · omitido: ya en revisión en otra corrida\n"
+                      f"🔍 pagos#7 · revisaría {token}"}]
+    data, _ = lock(lines)
+    check("⏭️ and other lines never lock", data["decision"] == "go", data)
+
+
+def test_lock_released_by_losing_run_skip():
+    skipped = {"ts": ts(1), "thread": "T2",
+               "text": f"⏭️ pagos#7 · colega-uno · omitido: ya en revisión en otra corrida "
+                       f"[rr:{LOCK_PR}@{HEAD[:7]}]"}
+    lines = [lock_line(3, thread="T1"), result_line(2, thread="T1"),
+             lock_line(3, thread="T2", micro=5), skipped]
+    data, _ = lock(lines)
+    check("the run that lost the tie-break releases its 🔒 with its ⏭️ line",
+          data["decision"] == "go", data)
+
+
+def test_lock_multiline_message():
+    lines = [{"ts": ts(10), "thread": "T1",
+              "text": "algo antes\n" + lock_line(10)["text"]}]
+    data, _ = lock(lines)
+    check("a 🔒 on any line of a message counts", data["decision"] == "skip", data)
+
+
+def test_lock_unreadable_skips():
+    data, code = lock(None, raw="{no es json")
+    check("unreadable lock lines → skip: candados ilegibles",
+          code == 0 and data["decision"] == "skip"
+          and data["reason"] == "candados ilegibles", data)
 
 
 def main():

@@ -2,10 +2,10 @@
 name: review-radar
 description: Use when running as an unattended routine — on a schedule or on a GitHub pull request event — to find the pull requests waiting for my review in GitHub and Slack, decide which deserve one, run review-changes --auto on them, report new activity and pending items on my own pull requests, and send a short summary to my Slack DM. Reviews no code itself and decides no approval; review-changes owns that.
 license: MIT
-compatibility: Built for a Claude Code cloud routine. Requires python3, an authenticated GitHub CLI (gh) used over REST only, the review-changes skill installed next to this one, a Slack connector (search, read thread, send message), and the configured repositories cloned in the session.
+compatibility: Built for a Claude Code cloud routine. Requires python3, an authenticated GitHub CLI (gh) used over REST only, the review-changes skill installed next to this one, a Slack connector (search, read channel, read thread, send message), and the configured repositories cloned in the session.
 allowed-tools: Read, Grep, Glob, Bash, Skill, Agent
 metadata:
-  version: 0.1.0
+  version: 0.2.0
   writes: my Slack DM (slack.notify_channel) only; GitHub only through review-changes
   modes: dry (lists what it would review) | live (runs review-changes --auto)
   posted_language: es
@@ -42,15 +42,16 @@ R="python3 <skill dir>/scripts/radar.py"; C="--config <skill dir>/config.yml"
 
 ## Slack operations
 
-The skill needs three Slack operations. Use the connector tool whose name ends
+The skill needs four Slack operations. Use the connector tool whose name ends
 in the suffix below; the prefix varies by host (`mcp__Slack__`,
 `mcp__claude_ai_Slack__`, …).
 
 | Operation | Tool name ends in |
 |---|---|
 | Search messages in channels, DMs, and group DMs | `slack_search_public_and_private` |
-| Read a thread (the parent of a reply) | `slack_read_thread` |
-| Send to my DM, or reply in that message's thread | `slack_send_message` |
+| Read my DM's history (live mode, for locks) | `slack_read_channel` |
+| Read a thread (the parent of a reply, a run's thread) | `slack_read_thread` |
+| Send to my DM, or reply in that message's thread (`unfurl_app_links: false`) | `slack_send_message` |
 
 No search tool: skip Slack detection and add `Slack: sin conector` to the start
 message. No send tool: print the messages in the session output and stop.
@@ -64,8 +65,12 @@ Read `config.yml`. Run `$R since $C`; keep `since`, `first_run_of_day`, and
 
 The run is an **event run** when the routine's prompt carries a GitHub
 `pull_request` event (a payload with `pull_request` and `repository`, or the
-PR URL it names). Anything else (the schedule, "Run now") is a **scheduled
-run**.
+PR URL it names). Anything else (the schedule, "Run now", a fired trigger)
+is a **scheduled run**.
+
+The **digest is due** when `first_run_of_day` and `my_prs.daily_digest` hold,
+or when a scheduled run's prompt or fire payload contains `resumen` (any case):
+that run sends `📋 Tus PRs abiertos` whatever the hour.
 
 ### 2. Event run
 
@@ -93,7 +98,7 @@ three hold:
 
 - no gate answered `review`;
 - no PR in `my-prs` has `has_events: true`;
-- the digest is not due (`first_run_of_day` and `my_prs.daily_digest`).
+- the digest is not due.
 
 ### 5. Start message
 
@@ -105,33 +110,50 @@ message is a reply in its thread. Formats for this and every line below:
 
 The PRs whose gate said `review`, in candidate order.
 
-- **`run.mode: dry`.** Invoke nothing. One `🔍 … revisaría` line per PR.
+- **`run.mode: dry`.** Invoke nothing and take no lock. Reply once in the
+  thread: the `🔍 … revisaría` lines, then the `⏭️` skipped lines, then the
+  gate errors.
 - **`run.mode: live`.** Take the first `run.max_reviews_per_run`; the rest get
-  a `⏳` line and wait for the next run. For each PR, one at a time:
-  1. Find its clone: the directory in the session whose `origin` remote points
+  a `⏳` line and wait for the next run. Reply once with the `⏳`, `⏭️`, and
+  gate-error lines. Then, for each PR to review, one at a time, every line is
+  its own reply in the thread, sent as soon as it is known. `<head>` is the
+  gate's `head`; `<token>` is the `token` that `radar.py lock` prints.
+  1. **Locks.** Read them into `${TMPDIR:-/tmp}/review-radar-locks.json`
+     following [reference/locks.md](reference/locks.md), then
+     `$R lock $C --lines <file> --pr <pr> --sha <head>`. `skip` →
+     `⏭️ … omitido: <reason>`, next PR.
+  2. **Claim.** Reply `🔒 revisando <link> @ <head> <token>` and keep
+     its `ts`.
+  3. **Confirm.** Read the locks again and run the same `lock` with
+     `--mine <ts>`. `skip` (another run claimed it first) →
+     `⏭️ … omitido: <reason> <token>`, next PR.
+  4. Find its clone: the directory in the session whose `origin` remote points
      at `github.com/<owner>/<repo>`. None → `⚠️ … error: repo no clonado`.
-  2. Check out the head without GraphQL:
+  5. Check out the head without GraphQL:
      `git -C <dir> fetch origin pull/<n>/head && git -C <dir> checkout --detach FETCH_HEAD`.
      (`gh pr checkout` uses GraphQL.)
-  3. From `<dir>`, run `review-changes --auto <PR url>`. When the Agent tool
+  6. From `<dir>`, run `review-changes --auto <PR url>`. When the Agent tool
      exists, run it in a subagent whose prompt asks for the `review-changes`
      skill with exactly those arguments, from `<dir>`, and for the final
      `review-result` block back verbatim; otherwise invoke the skill inline.
-  4. Parse the `review-result` JSON block. Missing or unparsable →
+  7. Parse the `review-result` JSON block. Missing or unparsable →
      `⚠️ … error: sin review-result`.
 
-Reply in the thread with one line per PR, reviewed or not: the result lines,
-then the `⏭️` skipped lines, then the gate errors.
+  From step 2 on, the line that ends the PR, result or `⚠️` or `⏭️`, ends with
+  `<token>`: that releases the lock. A `🔒` left without it blocks the PR for
+  `run.lock_minutes`.
 
 ### 7. My PRs and digest
 
 One more reply in the thread, only when it has content:
 
-- `📬 Tus PRs`: one line per PR with `has_events: true`.
-- `🗓️ Pendientes`: only when `first_run_of_day` and `my_prs.daily_digest`.
+- digest due: `📋 Tus PRs abiertos`, every open PR once, `🆕` on the ones
+  that moved; no `📬` section;
+- otherwise: `📬 Tus PRs`, one line per PR with `has_events: true`.
 
 Errors that `candidates` or `my-prs` returned in `errors` go at the end of the
 reply they belong to, one `⚠️` line each.
 
-The run is done when every gated PR has exactly one line in the thread and
-every `has_events` PR has its `📬` line.
+The run is done when every gated PR has exactly one final line in the thread,
+every `🔒` it posted has a later line with the same token, and every
+`has_events` PR has its line in `📬` or `📋`.

@@ -5,6 +5,8 @@
     radar.py candidates --config config.yml [--pr owner/repo#n] [--slack file.json]
     radar.py gate       --config config.yml --pr owner/repo#n --source github|slack
     radar.py my-prs     --config config.yml --since <iso8601> [--now <iso8601>]
+    radar.py lock       --config config.yml --lines locks.json --pr owner/repo#n
+                        --sha <short> [--mine <ts>] [--now <iso8601>]
 
 GitHub is read over REST only (`gh api`): cloud sessions answer GraphQL with
 403. Review threads come from review-changes' `post_review.py threads`, which
@@ -13,6 +15,7 @@ already picks GraphQL, CCR, or REST. Standard library only.
 
 import argparse
 import datetime as dt
+import decimal
 import importlib.util
 import json
 import pathlib
@@ -342,9 +345,15 @@ def parse_ref(text):
     return match.group(1), match.group(2), int(match.group(3))
 
 
+def slack_link(owner, repo, number):
+    """`<label>#<n>` as a Slack link to the PR: the only form the DM uses."""
+    return f"<https://github.com/{owner}/{repo}/pull/{number}|{label(repo)}#{number}>"
+
+
 def pr_summary(pr, owner, repo):
     return {"pr": f"{owner}/{repo}#{pr['number']}", "repo": repo,
             "label": label(repo), "number": pr["number"],
+            "link": slack_link(owner, repo, pr["number"]),
             "title": pr.get("title") or "", "author": login(pr.get("user")),
             "url": pr.get("html_url"),
             "head": ((pr.get("head") or {}).get("sha") or "")[:7]}
@@ -567,7 +576,9 @@ def cmd_gate(args):
     try:
         decision, reason, summary = decide(cfg, args.pr, args.source)
     except RuntimeError as err:
-        show({"pr": args.pr, "decision": "error", "reason": str(err)})
+        owner, repo, number = parse_ref(args.pr)
+        show({"pr": args.pr, "link": slack_link(owner, repo, number),
+              "decision": "error", "reason": str(err)})
         sys.exit(1)
     show({"pr": args.pr, **summary, "decision": decision, "reason": reason,
           "source": args.source})
@@ -751,7 +762,9 @@ def one_pr(cfg, owner, repo, listed, since, now):
     idle = max(0, (now - updated).days)
     events = {"reviews": new_reviews, "comments": grouped, "commits": commits,
               "ci_failed": {"sha": head[:7]} if failed_now else None}
-    return {**pr_summary(pr, owner, repo),
+    changes_by = sorted(who for who, state in verdicts.items()
+                        if state == "CHANGES_REQUESTED")
+    out = {**pr_summary(pr, owner, repo),
             "has_events": bool(new_reviews or grouped or commits or failed_now),
             "events": events, "ci": ci,
             "conflicts": pr.get("mergeable_state") == "dirty",
@@ -761,7 +774,153 @@ def one_pr(cfg, owner, repo, listed, since, now):
             "idle_days": idle,
             "stale": idle >= int(opts.get("stale_days") or 3),
             "has_reviews": bool(humans),
-            "needs_review": not draft and not humans}
+            "needs_review": not draft and not humans,
+            "changes_by": changes_by}
+    out["status"] = pr_status(out)
+    out["line"] = events_line(out) if out["has_events"] else None
+    out["digest_line"] = digest_line(out)
+    return out
+
+
+# The DM lines for my PRs. `📬 Tus PRs` has one `line` per PR with events;
+# the daily `📋 Tus PRs abiertos` lists every open PR once, by `status`.
+
+def plural(count, one, many):
+    return f"{count} {one if count == 1 else many}"
+
+
+REVIEW_VERB = {"APPROVED": "aprobó", "CHANGES_REQUESTED": "pidió cambios",
+               "COMMENTED": "comentó"}
+
+
+def event_facts(events):
+    """Facts from what happened since `since`, in the DM's order."""
+    facts, bots = [], 0
+    for entry in events["reviews"]:
+        if "logins" in entry:
+            bots += entry["count"]
+            continue
+        counts = []
+        if entry["reviews"] != 1 or entry["comments"]:
+            counts.append(plural(entry["reviews"], "review", "reviews"))
+        if entry["comments"]:
+            counts.append(plural(entry["comments"], "comentario", "comentarios"))
+        fact = f"{entry['author']} {REVIEW_VERB[entry['state']]}"
+        facts.append(f"{fact} ({', '.join(counts)})" if counts else fact)
+    for entry in events["comments"]:
+        if "logins" in entry:
+            bots += entry["count"]
+        else:
+            facts.append(f"{entry['author']}: "
+                         + plural(entry["count"], "comentario", "comentarios"))
+    if bots:
+        facts.append(f"bots: {bots}")
+    for entry in events["commits"]:
+        facts.append(f"{entry['author']} subió "
+                     + plural(entry["count"], "commit", "commits"))
+    if events["ci_failed"]:
+        facts.append(f"CI rojo en {events['ci_failed']['sha']}")
+    return facts
+
+
+def thread_facts(p):
+    threads = p["threads"]
+    out = []
+    if threads["open"]:
+        out.append(plural(threads["open"], "hilo abierto", "hilos abiertos"))
+    if threads["unverified"]:
+        out.append(plural(threads["unverified"], "hilo sin verificar",
+                          "hilos sin verificar"))
+    return out
+
+
+def events_line(p):
+    """`<emoji> <link> · <facts>` for `📬 Tus PRs`."""
+    events = p["events"]
+    people = [e for e in events["reviews"] if "logins" not in e and not e.get("bot")]
+    facts = event_facts(events)
+    if p["conflicts"]:
+        facts.append("tiene conflictos con la base")
+    if p["approved"] and p["ci"] == "success" and not p["ready"]:
+        facts.append("CI verde")
+    if p["ready"]:
+        facts.append("listo para mergear")
+    elif p["approved"]:
+        facts += thread_facts(p)
+    if events["ci_failed"]:
+        emoji = "❌"
+    elif any(e["state"] == "CHANGES_REQUESTED" for e in people):
+        emoji = "🔁"
+    elif p["conflicts"]:
+        emoji = "⚠️"
+    elif p["ready"] or any(e["state"] == "APPROVED" for e in people):
+        emoji = "✅"
+    elif events["reviews"] or events["comments"]:
+        emoji = "💬"
+    else:
+        emoji = "📥"
+    return " · ".join([f"{emoji} {p['link']}", *facts])
+
+
+STATUS_ORDER = ["ready", "ci_failed", "conflicts", "changes_requested",
+                "waiting_review", "approved", "draft", "stale", "in_review"]
+
+
+def pr_states(p):
+    """Every state that applies, highest priority first: (key, emoji, main
+    text, secondary text). `in_review` is what is left when nothing applies."""
+    states = []
+    if p["ready"]:
+        return [("ready", "🚀", "listo para mergear", None)]
+    if p["ci"] == "failure":
+        states.append(("ci_failed", "❌", f"CI rojo en {p['head']}", "CI rojo"))
+    if p["conflicts"]:
+        states.append(("conflicts", "⚠️", "tiene conflictos con la base", "conflictos"))
+    if p["changes_requested"]:
+        text = "cambios pedidos por " + ", ".join(p["changes_by"])
+        states.append(("changes_requested", "🔁", text, text))
+    if p["needs_review"]:
+        states.append(("waiting_review", "⏳", "esperando review", "esperando review"))
+    if p["approved"]:
+        why = ["CI en curso"] if p["ci"] == "pending" else thread_facts(p)
+        text = "aprobado, falta: " + (", ".join(why) or "algo que GitHub no dice")
+        states.append(("approved", "✅", text, "aprobado"))
+    if p["draft"]:
+        days = p["draft_days"] or 0
+        states.append(("draft", "📝", f"draft ({days} d)", f"draft ({days} d)"))
+    if p["stale"] and not p["draft"]:  # a draft's days already say it
+        states.append(("stale", "💤", f"sin movimiento ({p['idle_days']} d)",
+                       f"{p['idle_days']} d sin movimiento"))
+    return states or [("in_review", "👀", "en review", None)]
+
+
+def pr_status(p):
+    """The state a PR is listed under (the highest that applies), plus the
+    other states that also apply, in the same order."""
+    states = pr_states(p)
+    key, emoji, text, _ = states[0]
+    return {"key": key, "rank": STATUS_ORDER.index(key), "emoji": emoji,
+            "text": text, "also": [extra for _, _, _, extra in states[1:]]}
+
+
+def digest_line(p):
+    """`<emoji> <link> · <state> · <other states>`, then `🆕` and the new
+    facts when it moved since `since`."""
+    status = p["status"]
+    parts = [f"{status['emoji']} {p['link']}", status["text"], *status["also"]]
+    facts = event_facts(p["events"]) if p["has_events"] else []
+    if status["key"] == "ci_failed" and p["events"]["ci_failed"]:
+        facts = [f for f in facts if not f.startswith("CI rojo en ")]
+    if p["has_events"]:
+        parts.append(" · ".join(["🆕", *facts]) if facts else "🆕")
+    return " · ".join(parts)
+
+
+def digest(prs):
+    """`📋 Tus PRs abiertos (<n>)`: every open PR once, by status rank."""
+    ordered = sorted(prs, key=lambda p: p["status"]["rank"])
+    return {"title": f"📋 Tus PRs abiertos ({len(prs)})",
+            "lines": [p["digest_line"] for p in ordered]}
 
 
 def cmd_my_prs(args):
@@ -785,6 +944,91 @@ def cmd_my_prs(args):
             except RuntimeError as err:
                 out["errors"].append({"pr": f"{org}/{repo}#{listed['number']}",
                                       "error": str(err)})
+    out["digest"] = digest(out["prs"])
+    show(out)
+
+
+# --- lock -------------------------------------------------------------------
+# Two runs that overlap must not review the same PR at once. Each live review
+# posts `🔒 … [rr:<owner>/<repo>#<n>@<sha>]` in its run's thread before it
+# starts; the line that ends that PR in the same thread (a result, or the ⏭️ of
+# a run that lost the tie-break) carries the same token and releases it. The
+# agent reads those lines from my DM; this decides. The lock is per PR: the sha
+# is only data.
+
+LOCK_MINUTES = 90
+TOKEN = re.compile(r"\[rr:([\w.-]+/[\w.-]+#\d+)@([0-9a-fA-F]+)\]")
+RELEASE_MARKS = ("✅", "💬", "📝", "📭", "⚠", "⏭")
+
+
+def slack_ts(value):
+    try:
+        return decimal.Decimal(str(value))
+    except (decimal.InvalidOperation, ValueError):
+        raise ValueError(f"bad Slack ts {value!r}")
+
+
+def lock_lines(path):
+    """Every line holding a token: (ts, thread, kind, pr, sha)."""
+    data = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        raise ValueError("expected a JSON list")
+    out = []
+    for entry in data:
+        ts = slack_ts(entry["ts"])
+        thread = str(entry.get("thread") or entry["ts"])
+        for line in str(entry.get("text") or "").splitlines():
+            line = line.strip()
+            match = TOKEN.search(line)
+            if not match:
+                continue
+            if line.startswith("🔒"):
+                kind = "lock"
+            elif line.startswith(RELEASE_MARKS):
+                kind = "result"
+            else:
+                continue
+            out.append((ts, thread, kind, match.group(1), match.group(2)[:7]))
+    return out
+
+
+def decide_lock(lines, pr, now, minutes, mine=None):
+    """Skip when another run holds a live, unreleased lock on this PR that is
+    older than mine (any age when I have none yet)."""
+    oldest = decimal.Decimal(str(now.timestamp() - minutes * 60))
+    held = []
+    for ts, thread, kind, ref, sha in lines:
+        if kind != "lock" or ref != pr or ts < oldest:
+            continue
+        if mine is not None and ts >= mine:
+            continue
+        released = any(k == "result" and r == ref and th == thread and t > ts
+                       for t, th, k, r, _ in lines)
+        if not released:
+            held.append({"ts": str(ts), "thread": thread, "sha": sha})
+    if held:
+        return "skip", "ya en revisión en otra corrida", min(held, key=lambda h: slack_ts(h["ts"]))
+    return "go", "sin candado vigente", None
+
+
+def cmd_lock(args):
+    cfg = load_config(args.config)
+    owner, repo, number = parse_ref(args.pr)
+    pr = f"{owner}/{repo}#{number}"
+    minutes = int((cfg.get("run") or {}).get("lock_minutes") or LOCK_MINUTES)
+    now = parse_time(args.now) if args.now else dt.datetime.now(dt.timezone.utc)
+    token = f"[rr:{pr}@{args.sha[:7]}]"
+    try:
+        lines = lock_lines(args.lines)
+        mine = slack_ts(args.mine) if args.mine else None
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as err:
+        show({"pr": pr, "token": token, "decision": "skip",
+              "reason": "candados ilegibles", "error": str(err)})
+        return
+    decision, reason, held = decide_lock(lines, pr, now, minutes, mine)
+    out = {"pr": pr, "token": token, "decision": decision, "reason": reason}
+    if held:
+        out["held_by"] = held
     show(out)
 
 
@@ -817,6 +1061,15 @@ def main(argv=None):
     p.add_argument("--since", required=True)
     p.add_argument("--now")
     p.set_defaults(run=cmd_my_prs)
+
+    p = sub.add_parser("lock")
+    p.add_argument("--config", required=True)
+    p.add_argument("--lines", required=True, help="JSON list of {ts, thread, text}")
+    p.add_argument("--pr", required=True, help="owner/repo#n")
+    p.add_argument("--sha", required=True, help="the head being reviewed")
+    p.add_argument("--mine", help="ts of my own 🔒 line")
+    p.add_argument("--now")
+    p.set_defaults(run=cmd_lock)
 
     args = parser.parse_args(argv)
     args.run(args)

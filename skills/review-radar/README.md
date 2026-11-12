@@ -19,6 +19,8 @@ requests are read-only.
    - **GitHub event:** pull request events on the configured repositories.
 3. Leave `run.mode: dry` for the first days: it lists what it would review
    without calling `review-changes`. Switch to `live` once the list looks right.
+4. Optional: fire the routine with a text that contains `resumen` to get the
+   `📋 Tus PRs abiertos` digest at any hour.
 
 ## Configuration
 
@@ -30,7 +32,7 @@ mode, and the my-PRs options.
 
 | Trigger | Does |
 |---|---|
-| Schedule or "Run now" | GitHub + Slack candidates → gate → reviews; my-PR events; daily digest on the first run of the day |
+| Schedule or "Run now" | GitHub + Slack candidates → gate → reviews; my-PR events; `📋` digest of every open PR of mine on the first run of the day, or when the prompt says `resumen` |
 | Pull request event | that PR only: candidate check → gate → review |
 
 A run with nothing to review, no new activity on my PRs, and no digest due sends
@@ -44,6 +46,13 @@ The **gate** skips, in order: unconfigured repo, closed or merged, draft, my
 own PR, an author outside my team I never reviewed (GitHub requests only), a
 head I already reviewed, and new commits that are only merges from the base. A
 reply on a thread does not count as a review.
+
+In live mode, a **lock** keeps two overlapping runs off the same PR. Before
+reviewing, a run posts `🔒 revisando … [rr:<owner>/<repo>#<n>@<sha>]` in its
+thread; the line with the result carries the same token and frees it. Another
+run that sees a live `🔒` skips the PR. When two runs claim it at once, the
+older `🔒` wins. A `🔒` with no result frees itself after `run.lock_minutes`.
+If the DM cannot be read, the PR is skipped.
 
 ## Tests
 
