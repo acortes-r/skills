@@ -41,6 +41,10 @@ DIFF = """--- a/app/models/user.rb
 FINDING_BODY = "🟠 `user` puede ser nil — `find_by` devuelve nil."
 REPLY_BODY = "El retry viene del webhook, no del cliente."
 HEAD = "abc1234def5678"
+PULL = {"number": 1, "title": "Agrega avisos de reserva", "body": "",
+        "user": {"login": "autora-ficticia", "type": "User"}, "draft": False,
+        "base": {"ref": "main"}, "head": {"ref": "feat/avisos", "sha": HEAD},
+        "html_url": "https://example.test/o/n/pull/1"}
 
 failures = []
 
@@ -59,15 +63,31 @@ def thread(author="revisora-ficticia", body=FINDING_BODY, resolved=False):
             "comments": {"nodes": [{"author": {"login": author}, "body": body}]}}
 
 
-def run(argv, comments=None, reviews=None, sent=None, threads=None):
-    """Run main() with a stubbed gh. Returns everything it printed."""
+BLOCKED = ("gh: GitHub GraphQL is not available from Claude Code sessions; "
+           "use the REST API (HTTP 403)")
+
+
+def run(argv, comments=None, reviews=None, sent=None, threads=None,
+        graphql="ok", review_threads=None, ccr=None, sub=None):
+    """Run main() with a stubbed gh. Returns everything it printed.
+
+    `graphql` is "ok", "blocked" (the cloud-session 403), or "error". `ccr` is
+    the `ccr/review_threads` answer; None makes that route fail.
+    """
     sent = sent if sent is not None else []
 
     def fake_gh(args, stdin=None):
         if args[:2] == ["auth", "status"]:
             return ""
         if args[:2] == ["api", "graphql"]:
+            if graphql == "blocked":
+                raise RuntimeError(BLOCKED)
+            if graphql == "error":
+                raise RuntimeError("gh: Something went wrong (HTTP 502)")
             query = next(a for a in args if a.startswith("query="))
+            if "reviewThreads" in query:
+                return json.dumps({"data": {"repository": {"pullRequest": {
+                    "reviewThreads": {"nodes": review_threads or []}}}}})
             thread_id = next(a for a in args if a.startswith("id="))[3:]
             if "resolveReviewThread" in query:
                 sent.append({"resolve": thread_id})
@@ -75,24 +95,40 @@ def run(argv, comments=None, reviews=None, sent=None, threads=None):
             return json.dumps({"data": {"node": (threads or {}).get(thread_id)}})
         if args[:2] == ["api", "user"]:
             return "revisora-ficticia\n"
-        if args[0] == "pr" and args[1] == "diff":
-            return DIFF
-        if args[0] == "pr" and args[1] == "view":
-            return json.dumps({"headRefOid": HEAD})
-        if args[0] == "api" and args[1].endswith("/comments"):
+        if args[0] != "api":
+            raise AssertionError(f"unexpected gh call: {args!r}")
+        endpoint = next(a for a in args[1:] if not a.startswith("-")
+                        and a not in ("POST", "Accept: application/vnd.github.diff"))
+        if endpoint.endswith("/ccr/review_threads"):
+            if ccr is None:
+                raise RuntimeError("gh: Not Found (HTTP 404)")
+            return json.dumps(ccr)
+        if "/ccr/comments/" in endpoint and endpoint.endswith("/resolve"):
+            sent.append({"ccr_resolve": endpoint.split("/")[-2]})
+            return "{}"
+        if endpoint == "repos/o/n/pulls/1":
+            if "Accept: application/vnd.github.diff" in args:
+                return DIFF
+            return json.dumps(PULL)
+        if endpoint.endswith("/files"):
+            return json.dumps([{"filename": "app/models/user.rb"}])
+        if endpoint.startswith("repos/o/n/issues/"):
+            return "[]"
+        if endpoint.endswith("/replies"):
+            sent.append({"reply": json.loads(stdin)})
+            return "{}"
+        if endpoint.endswith("/comments"):
             return json.dumps(comments or [])
-        if args[0] == "api" and args[1].endswith("/reviews"):
+        if endpoint.endswith("/reviews"):
             if stdin is None:
                 return json.dumps(reviews or [])
             sent.append(json.loads(stdin))
             return json.dumps({"html_url": "https://example.test/r/1"})
-        if args[0] == "api" and args[1].endswith("/replies"):
-            sent.append({"reply": json.loads(stdin)})
-            return "{}"
         raise AssertionError(f"unexpected gh call: {args!r}")
 
     original, mod.gh = mod.gh, fake_gh
-    sys.argv = ["post_review.py", "--repo", "o/n", "--pr", "1"] + argv
+    head = [sub] if sub else []
+    sys.argv = ["post_review.py"] + head + ["--repo", "o/n", "--pr", "1"] + argv
     buffer = io.StringIO()
     try:
         with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
@@ -494,6 +530,113 @@ def test_nothing_new_at_head_exits_clean():
     out = run(["--summary", write("s_auto4.json", {})], reviews=at_head, sent=sent)
     check("nothing new at a head with a round exits 0 and says so",
           "No review created" in out and "EXIT" not in out and not sent, out)
+
+
+# --- cloud sessions: REST reads, CCR threads ---------------------------
+# Claude Code cloud sessions refuse GraphQL with a 403. Threads then come from
+# the CCR route, which lists comment ids only; REST fills in the rest.
+
+REST_COMMENTS = [
+    {"id": 501, "path": "app/models/user.rb", "line": 51, "in_reply_to_id": None,
+     "user": {"login": "revisora-ficticia"}, "body": FINDING_BODY,
+     "created_at": "2026-01-02T10:00:00Z", "html_url": "https://example.test/c/501"},
+    {"id": 502, "path": "app/models/user.rb", "line": 51, "in_reply_to_id": 501,
+     "user": {"login": "autora-ficticia"}, "body": "Ya lo corregí.",
+     "created_at": "2026-01-02T11:00:00Z", "html_url": "https://example.test/c/502"},
+    {"id": 601, "path": "app/x.rb", "line": None, "in_reply_to_id": None,
+     "user": {"login": "otra-cuenta-ficticia"}, "body": "Nombre poco claro.",
+     "created_at": "2026-01-01T09:00:00Z", "html_url": "https://example.test/c/601"},
+]
+
+CCR_THREADS = [
+    {"resolved": False, "outdated": False, "path": "app/models/user.rb",
+     "line": 51, "comment_ids": [501, 502]},
+    {"resolved": True, "outdated": True, "path": "app/x.rb", "line": None,
+     "comment_ids": [601, 999]},
+]
+
+GRAPHQL_THREADS = [
+    {"id": "PRRT_ficticio1", "isResolved": False, "isOutdated": False,
+     "path": "app/models/user.rb", "line": 51,
+     "comments": {"nodes": [{"databaseId": 501, "url": "https://example.test/c/501",
+                             "author": {"login": "revisora-ficticia"},
+                             "body": FINDING_BODY,
+                             "createdAt": "2026-01-02T10:00:00Z"}]}},
+]
+
+
+def read_json_out(out):
+    return json.loads(out[:out.rindex("}") + 1][out.index("{"):])
+
+
+def test_threads_from_graphql():
+    out = run([], sub="threads", review_threads=GRAPHQL_THREADS,
+              comments=REST_COMMENTS, ccr=CCR_THREADS)
+    data = read_json_out(out)
+    first = data["threads"][0]
+    check("threads read through GraphQL keep node ids and known resolution",
+          data["source"] == "graphql" and data["resolution"] == "known"
+          and first["id"] == "PRRT_ficticio1"
+          and first["comments"][0] == {"id": 501, "author": "revisora-ficticia",
+                                       "body": FINDING_BODY,
+                                       "createdAt": "2026-01-02T10:00:00Z",
+                                       "url": "https://example.test/c/501"}, out)
+
+
+def test_threads_from_ccr_when_graphql_is_refused():
+    out = run([], sub="threads", graphql="blocked",
+              comments=REST_COMMENTS, ccr=CCR_THREADS)
+    data = read_json_out(out)
+    live, outdated = data["threads"]
+    check("a refused GraphQL takes the CCR route, filled in from REST",
+          data["source"] == "ccr" and data["resolution"] == "known"
+          and live["id"] == "comment:501" and live["isResolved"] is False
+          and [c["author"] for c in live["comments"]]
+          == ["revisora-ficticia", "autora-ficticia"]
+          and live["comments"][1]["body"] == "Ya lo corregí.", out)
+    check("an outdated CCR thread keeps line null and drops an unknown id",
+          outdated["line"] is None and outdated["isOutdated"] is True
+          and [c["id"] for c in outdated["comments"]] == [601]
+          and "[999]" in out and "EXIT" not in out, out)
+
+
+def test_threads_fall_to_rest_when_ccr_fails():
+    out = run([], sub="threads", graphql="blocked", comments=REST_COMMENTS)
+    data = read_json_out(out)
+    first = data["threads"][0]
+    check("CCR failing too falls back to REST with resolution unknown",
+          data["source"] == "rest" and data["resolution"] == "unknown"
+          and "resolution state unknown" in out
+          and first["id"] is None and first["isResolved"] is False
+          and [c["id"] for c in first["comments"]] == [501, 502], out)
+
+
+def test_other_graphql_errors_skip_ccr():
+    out = run([], sub="threads", graphql="error",
+              comments=REST_COMMENTS, ccr=CCR_THREADS)
+    check("a GraphQL failure that is not the session 403 goes straight to REST",
+          read_json_out(out)["source"] == "rest", out)
+
+
+def test_a_ccr_thread_is_resolved_through_ccr():
+    sent = []
+    out = run(["--resolve", write("t_ccr.json", ["comment:501", "comment:601"])],
+              sent=sent, graphql="blocked", comments=REST_COMMENTS, ccr=CCR_THREADS)
+    check("a CCR thread of ours is resolved through ccr/comments/<id>/resolve",
+          [item for item in sent if "ccr_resolve" in item] == [{"ccr_resolve": "501"}]
+          and not any("resolve" in item for item in sent)
+          and "resolve=1" in out, out)
+
+
+def test_pr_and_diff_read_through_rest():
+    meta = read_json_out(run([], sub="pr"))
+    patch = run([], sub="diff")
+    check("pr prints the REST metadata, normalized",
+          meta["headSha"] == HEAD and meta["author"] == "autora-ficticia"
+          and meta["base"] == "main" and meta["files"] == ["app/models/user.rb"],
+          json.dumps(meta))
+    check("diff prints the patch from the REST diff media type",
+          patch == DIFF, patch)
 
 
 def main():

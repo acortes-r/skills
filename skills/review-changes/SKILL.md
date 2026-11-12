@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires git. Pull-request features require an authenticated GitHub CLI (gh 2.40+). Host must provide file-read, grep, and shell tools.
 allowed-tools: Read, Grep, Glob, Bash, Agent
 metadata:
-  version: 0.9.0
+  version: 0.9.1
   review_event: COMMENT, or APPROVE when no 🔴 or 🟠 survives at full coverage
   never_emits: REQUEST_CHANGES
   approves_only: after an explicit user go, or the skill's own verdict under --auto
@@ -129,12 +129,13 @@ Resolve `<base>` as `origin/HEAD`, falling back to `origin/main`, then
 
 More than one PR URL in the argument text: stop and ask for one at a time.
 
-When the target is a PR, prefer `gh` context:
+When the target is a PR, prefer `gh` context, read through the publisher. Its
+read commands use REST, so they work in Claude Code cloud sessions too, where
+GraphQL answers 403:
 
 ```bash
-gh pr view <target> --json number,title,body,author,baseRefName,headRefName,isDraft,url
-gh pr diff <target>
-gh pr diff <target> --name-only
+python3 scripts/post_review.py pr --repo <owner>/<name> --pr <n>    # metadata, headSha, files
+python3 scripts/post_review.py diff --repo <owner>/<name> --pr <n>  # the diff
 ```
 
 No `gh` available: continue on the local diff and record
@@ -173,7 +174,7 @@ Everything else is a normal review. Read only the profiles the diff needs.
 | controllers, services, jobs, endpoints, queries, serializers | `reference/backend.md` |
 | auth, crypto, uploads, deserialization, env/secrets, dependency manifests | `reference/security.md` |
 
-A **dependency bump** is a PR whose author is a bot (`author.is_bot`, or a login
+A **dependency bump** is a PR whose author is a bot (`authorIsBot` from `pr`, or a login
 ending in `[bot]`: Dependabot, Renovate) and whose every changed file is a
 dependency manifest or lockfile. It routes `reference/security.md` alone, for
 its dependency checks, and records `correctness` and `tests` as
@@ -441,7 +442,7 @@ same inputs:
 - `summary.json` — `{"resueltos": [...], "pendientes": [...], "parcial": "..."}`
   from step 5a and 5b. `parcial` names what did not run, only on reduced
   coverage.
-- `resolve.json` — the node ids of our threads that `prior-reviews.md` marked
+- `resolve.json` — the thread `id`s, as `threads` printed them, that `prior-reviews.md` marked
   to resolve.
 
 Omit a flag whose file would be empty. Before every send:
@@ -609,7 +610,8 @@ independent of session style.
 | No `gh` | local diff review; `reduced-context:no-gh`; steps 5 and 7 `not-run:no-pr-context`; no approval is offered |
 | Our login unknown | `reduced-context:no-self-identity`; no thread counts as ours; step 5a `not-run`; findings fall through to 5b; the publisher refuses to send, so line 3 is 📭 |
 | No project rule files | `not-run:no-project-rules-found`; continue on the generic profiles |
-| GraphQL unavailable | REST review comments, resolution state unknown, recorded as such; no thread is resolved |
+| GraphQL refused (cloud session 403) | `threads` takes the CCR route on its own: resolution state stays known, and threads resolve through it |
+| GraphQL and CCR both unavailable | `threads` reports `resolution: unknown`; recorded as such; every thread treated as unresolved; no thread is resolved |
 | A profile cannot run | `not-run:<reason>` in the ledger; never folded into another profile |
 | Empty diff | stop and say there is nothing to review; resumen line 3 is `Nada que revisar.` In local mode no file is written |
 | `--out` points inside the repository | refuse it and write to the default path in `reference/local-mode.md` instead |

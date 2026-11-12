@@ -453,15 +453,15 @@ review-changes/
 │   ├── backend.md                # server correctness and contracts
 │   ├── frontend.md               # client state, a11y, weight
 │   └── security.md               # authz, injection, secrets
-├── scripts/post_review.py        # deterministic publisher
-├── tests/test_post_review.py     # 35 tests over the publisher, gh stubbed
+├── scripts/post_review.py        # deterministic publisher; pr, diff, threads reads
+├── tests/test_post_review.py     # 43 tests over the publisher, gh stubbed
 ├── evals/evals.json              # 70 scenarios
 └── agents/openai.yaml            # host adapter
 ```
 
 ## Tests
 
-The publisher has 35 tests. No network, no dependencies, no test runner:
+The publisher has 43 tests. No network, no dependencies, no test runner:
 
 ```bash
 python3 skills/review-changes/tests/test_post_review.py
@@ -471,7 +471,8 @@ They stub `gh`, so nothing reaches GitHub. They cover the two guarantees that
 are expensive to get wrong — a comment is never posted twice, and the same head
 commit is never approved twice — plus round numbering, thread resolution, the
 flag combinations the publisher refuses, and the exit codes and printed lines
-an unattended `--auto` run acts on.
+an unattended `--auto` run acts on, and the GraphQL → CCR → REST fallback for
+review threads.
 
 `evals/evals.json` is a different thing: 70 declarative scenarios describing what
 the skill should do. The repository has no eval runner, so they are read, not
@@ -485,6 +486,16 @@ executed.
 
 Without `gh` the skill reviews the local diff and reports reduced context.
 Publishing and deduplication are then recorded as `not-run:no-pr-context`.
+
+### Claude Code cloud sessions
+
+Cloud sessions (routines) refuse GitHub GraphQL with a 403. The skill reads
+every pull-request detail through the publisher's REST-based `pr`, `diff`, and
+`threads` commands, so the same run works locally and in the cloud. Review
+threads come from GraphQL when it answers, from the session's CCR route
+(`ccr/review_threads`, resolved through `ccr/comments/<id>/resolve`) when it is
+refused, and from plain REST comments, with resolution state unknown, when
+neither is available.
 
 ## Scope
 
