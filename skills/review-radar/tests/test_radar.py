@@ -538,6 +538,44 @@ def test_my_prs_reviews():
           pr["changes_requested"] is True and pr["ready"] is False, pr)
 
 
+def bot_review(author, state="COMMENTED", at="2026-03-10T15:21:00Z",
+               body="Resumen automático ficticio"):
+    data = review(author, state, at=at, body=body)
+    data["user"]["type"] = "Bot"
+    return data
+
+
+def test_my_prs_bot_reviews_decide_nothing():
+    data, calls = my_prs(my_routes(mine(), reviews=[
+        bot_review("revisor-ia[bot]", "APPROVED"),
+        bot_review("lint-ficticio", "CHANGES_REQUESTED", at="2026-03-10T15:22:00Z"),
+        bot_review("revisor-ia[bot]", at="2026-03-10T15:23:00Z")]))
+    pr = data["prs"][0]
+    check("a bot's approval or change request is no verdict",
+          pr["approved"] is False and pr["changes_requested"] is False
+          and pr["ready"] is False, pr)
+    check("a PR reviewed only by bots still needs review",
+          pr["needs_review"] is True and pr["has_reviews"] is False, pr)
+    check("new bot reviews fold into one event entry",
+          pr["events"]["reviews"] == [{"author": "bots", "count": 3, "bot": True,
+                                       "logins": ["lint-ficticio", "revisor-ia[bot]"]}],
+          pr["events"])
+
+
+def test_my_prs_bot_cannot_block_a_human_approval():
+    data, _ = my_prs(my_routes(mine(), reviews=[
+        review("colega-uno", "APPROVED", at="2026-03-10T15:20:00Z"),
+        bot_review("lint-ficticio", "CHANGES_REQUESTED", at="2026-03-10T15:25:00Z")]),
+        threads=("graphql", []))
+    pr = data["prs"][0]
+    check("a person's approval stands over a bot's change request: ready",
+          pr["approved"] is True and pr["changes_requested"] is False
+          and pr["ready"] is True, pr)
+    check("the person's review stays its own event",
+          pr["events"]["reviews"][0] == {"author": "colega-uno", "state": "APPROVED"},
+          pr["events"])
+
+
 def test_my_prs_comments_grouped_and_bots():
     data, _ = my_prs(my_routes(mine(),
         review_comments=[comment("colega-uno"), comment("colega-uno"),

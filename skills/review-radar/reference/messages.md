@@ -49,6 +49,7 @@ Facts, in this order, joined by ` · `, each only when present:
 | From | Fact |
 |---|---|
 | `events.reviews` | `<author> aprobó` · `<author> pidió cambios` · `<author> comentó` |
+| `events.reviews`, the bots entry | `<count> reviews de <logins without [bot]>` (`1 review de …`) |
 | `events.comments`, first person entry | `<count> comentarios nuevos de <author>` (`1 comentario nuevo de …`) |
 | `events.comments`, later entries | `<count> de <author>`; the bots entry names its `logins` without `[bot]` |
 | `events.commits` | `<author> subió <count> commits` (`1 commit`) |
@@ -61,7 +62,8 @@ Facts, in this order, joined by ` · `, each only when present:
 
 The emoji is the first that applies: `❌` CI failed, `🔁` changes requested in
 this window, `⚠️` conflicts, `✅` approved in this window or ready, `💬`
-comments, `📥` commits.
+comments or bot reviews, `📥` commits. Only people's reviews count for `🔁` and
+`✅`; `approved`, `changes_requested`, and `ready` already ignore bots.
 
 ```
 ✅ purchase#3196 · carlos-r aprobó · CI verde · listo para mergear

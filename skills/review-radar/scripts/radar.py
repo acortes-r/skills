@@ -634,14 +634,41 @@ def ci_state(owner, repo, sha, since):
 
 
 def latest_verdicts(reviews, me):
-    """Each other reviewer's latest APPROVED or CHANGES_REQUESTED."""
+    """Each other human reviewer's latest APPROVED or CHANGES_REQUESTED.
+
+    A bot's approval or change request decides nothing here.
+    """
     verdicts = {}
     for review in sorted(reviews, key=lambda r: r.get("submitted_at") or ""):
         who = login(review.get("user"))
-        if who != me and review.get("state") in ("APPROVED", "CHANGES_REQUESTED",
-                                                  "DISMISSED"):
+        if who != me and not is_bot(review.get("user")) \
+                and review.get("state") in ("APPROVED", "CHANGES_REQUESTED",
+                                            "DISMISSED"):
             verdicts[who] = review["state"]
     return verdicts
+
+
+def new_review_events(reviews, since, group_bots):
+    """Reviews after `since` that say something: people one by one, bots folded
+    into one entry when group_bots, like their comments."""
+    events, bots = [], {}
+    for review in sorted(reviews, key=lambda r: r.get("submitted_at") or ""):
+        if not after(review.get("submitted_at"), since):
+            continue
+        if review["state"] == "COMMENTED" and not (review.get("body") or "").strip():
+            continue  # a container for line comments, counted with the comments
+        who = login(review.get("user"))
+        if is_bot(review.get("user")):
+            if group_bots:
+                bots[who] = bots.get(who, 0) + 1
+            else:
+                events.append({"author": who, "state": review["state"], "bot": True})
+        else:
+            events.append({"author": who, "state": review["state"]})
+    if bots:
+        events.append({"author": "bots", "logins": sorted(bots),
+                       "count": sum(bots.values()), "bot": True})
+    return events
 
 
 def draft_since(owner, repo, pr):
@@ -668,10 +695,9 @@ def one_pr(cfg, owner, repo, listed, since, now):
     reviews = api_pages(f"repos/{full}/pulls/{number}/reviews")
     others = [r for r in reviews if login(r.get("user")) != me
               and r.get("state") in ("APPROVED", "CHANGES_REQUESTED", "COMMENTED")]
-    new_reviews = [{"author": login(r.get("user")), "state": r["state"]}
-                   for r in sorted(others, key=lambda r: r.get("submitted_at") or "")
-                   if after(r.get("submitted_at"), since)
-                   and (r["state"] != "COMMENTED" or (r.get("body") or "").strip())]
+    humans = [r for r in others if not is_bot(r.get("user"))]
+    new_reviews = new_review_events(others, since,
+                                    bool(opts.get("group_bot_comments", True)))
     stamp = since.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     comments = api_pages(f"repos/{full}/pulls/{number}/comments?since={stamp}")
     comments += api_pages(f"repos/{full}/issues/{number}/comments?since={stamp}")
@@ -704,8 +730,8 @@ def one_pr(cfg, owner, repo, listed, since, now):
             "draft_days": max(0, (now - started).days) if started else None,
             "idle_days": idle,
             "stale": idle >= int(opts.get("stale_days") or 3),
-            "has_reviews": bool(others),
-            "needs_review": not draft and not others}
+            "has_reviews": bool(humans),
+            "needs_review": not draft and not humans}
 
 
 def cmd_my_prs(args):
