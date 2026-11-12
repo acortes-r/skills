@@ -97,8 +97,13 @@ def run(argv, comments=None, reviews=None, sent=None, threads=None,
             return "revisora-ficticia\n"
         if args[0] != "api":
             raise AssertionError(f"unexpected gh call: {args!r}")
+        if "--paginate" in args:
+            raise AssertionError(f"--paginate breaks in cloud sessions: {args!r}")
         endpoint = next(a for a in args[1:] if not a.startswith("-")
                         and a not in ("POST", "Accept: application/vnd.github.diff"))
+        endpoint, _, query = endpoint.partition("?")
+        if "page=" in query and "page=1" not in query.split("&"):
+            return "[]"  # a single page of fixtures
         if endpoint.endswith("/ccr/review_threads"):
             if ccr is None:
                 raise RuntimeError("gh: Not Found (HTTP 404)")
@@ -626,6 +631,30 @@ def test_a_ccr_thread_is_resolved_through_ccr():
           [item for item in sent if "ccr_resolve" in item] == [{"ccr_resolve": "501"}]
           and not any("resolve" in item for item in sent)
           and "resolve=1" in out, out)
+
+
+def test_pages_are_requested_one_by_one():
+    full = [{"id": n} for n in range(mod.PER_PAGE)]
+    pages = {1: full, 2: [{"id": "last"}]}
+    asked = []
+
+    def fake_gh(args, stdin=None):
+        assert "--paginate" not in args, args
+        endpoint, _, query = args[1].partition("?")
+        params = dict(pair.split("=", 1) for pair in query.split("&"))
+        asked.append((endpoint, params))
+        return json.dumps(pages.get(int(params["page"]), []))
+
+    original, mod.gh = mod.gh, fake_gh
+    try:
+        items = mod.gh_pages("repos/o/n/pulls/1/comments")
+    finally:
+        mod.gh = original
+    check("a full page asks for the next one and a short page ends the list",
+          len(items) == mod.PER_PAGE + 1 and items[-1] == {"id": "last"}
+          and [p["page"] for _, p in asked] == ["1", "2"]
+          and all(p["per_page"] == str(mod.PER_PAGE) for _, p in asked)
+          and all(e == "repos/o/n/pulls/1/comments" for e, _ in asked), asked)
 
 
 def test_pr_and_diff_read_through_rest():
