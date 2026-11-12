@@ -762,7 +762,9 @@ def one_pr(cfg, owner, repo, listed, since, now):
     idle = max(0, (now - updated).days)
     events = {"reviews": new_reviews, "comments": grouped, "commits": commits,
               "ci_failed": {"sha": head[:7]} if failed_now else None}
-    return {**pr_summary(pr, owner, repo),
+    changes_by = sorted(who for who, state in verdicts.items()
+                        if state == "CHANGES_REQUESTED")
+    out = {**pr_summary(pr, owner, repo),
             "has_events": bool(new_reviews or grouped or commits or failed_now),
             "events": events, "ci": ci,
             "conflicts": pr.get("mergeable_state") == "dirty",
@@ -772,7 +774,142 @@ def one_pr(cfg, owner, repo, listed, since, now):
             "idle_days": idle,
             "stale": idle >= int(opts.get("stale_days") or 3),
             "has_reviews": bool(humans),
-            "needs_review": not draft and not humans}
+            "needs_review": not draft and not humans,
+            "changes_by": changes_by}
+    out["status"] = pr_status(out)
+    out["line"] = events_line(out) if out["has_events"] else None
+    out["digest_line"] = digest_line(out)
+    return out
+
+
+# The DM lines for my PRs. `📬 Tus PRs` has one `line` per PR with events;
+# the daily `📋 Tus PRs abiertos` lists every open PR once, by `status`.
+
+def plural(count, one, many):
+    return f"{count} {one if count == 1 else many}"
+
+
+REVIEW_VERB = {"APPROVED": "aprobó", "CHANGES_REQUESTED": "pidió cambios",
+               "COMMENTED": "comentó"}
+
+
+def event_facts(events):
+    """Facts from what happened since `since`, in the DM's order."""
+    facts, bots = [], 0
+    for entry in events["reviews"]:
+        if "logins" in entry:
+            bots += entry["count"]
+            continue
+        counts = []
+        if entry["reviews"] != 1 or entry["comments"]:
+            counts.append(plural(entry["reviews"], "review", "reviews"))
+        if entry["comments"]:
+            counts.append(plural(entry["comments"], "comentario", "comentarios"))
+        fact = f"{entry['author']} {REVIEW_VERB[entry['state']]}"
+        facts.append(f"{fact} ({', '.join(counts)})" if counts else fact)
+    for entry in events["comments"]:
+        if "logins" in entry:
+            bots += entry["count"]
+        else:
+            facts.append(f"{entry['author']}: "
+                         + plural(entry["count"], "comentario", "comentarios"))
+    if bots:
+        facts.append(f"bots: {bots}")
+    for entry in events["commits"]:
+        facts.append(f"{entry['author']} subió "
+                     + plural(entry["count"], "commit", "commits"))
+    if events["ci_failed"]:
+        facts.append(f"CI rojo en {events['ci_failed']['sha']}")
+    return facts
+
+
+def thread_facts(p):
+    threads = p["threads"]
+    out = []
+    if threads["open"]:
+        out.append(plural(threads["open"], "hilo abierto", "hilos abiertos"))
+    if threads["unverified"]:
+        out.append(plural(threads["unverified"], "hilo sin verificar",
+                          "hilos sin verificar"))
+    return out
+
+
+def events_line(p):
+    """`<emoji> <link> · <facts>` for `📬 Tus PRs`."""
+    events = p["events"]
+    people = [e for e in events["reviews"] if "logins" not in e and not e.get("bot")]
+    facts = event_facts(events)
+    if p["conflicts"]:
+        facts.append("tiene conflictos con la base")
+    if p["approved"] and p["ci"] == "success" and not p["ready"]:
+        facts.append("CI verde")
+    if p["ready"]:
+        facts.append("listo para mergear")
+    elif p["approved"]:
+        facts += thread_facts(p)
+    if events["ci_failed"]:
+        emoji = "❌"
+    elif any(e["state"] == "CHANGES_REQUESTED" for e in people):
+        emoji = "🔁"
+    elif p["conflicts"]:
+        emoji = "⚠️"
+    elif p["ready"] or any(e["state"] == "APPROVED" for e in people):
+        emoji = "✅"
+    elif events["reviews"] or events["comments"]:
+        emoji = "💬"
+    else:
+        emoji = "📥"
+    return " · ".join([f"{emoji} {p['link']}", *facts])
+
+
+STATUS_ORDER = ["ready", "ci_failed", "conflicts", "changes_requested",
+                "waiting_review", "approved", "draft", "stale", "in_review"]
+
+
+def pr_status(p):
+    """The one current state a PR is listed under, highest priority first."""
+    if p["ready"]:
+        key, emoji, text = "ready", "🚀", "listo para mergear"
+    elif p["ci"] == "failure":
+        key, emoji, text = "ci_failed", "❌", f"CI rojo en {p['head']}"
+    elif p["conflicts"]:
+        key, emoji, text = "conflicts", "⚠️", "tiene conflictos con la base"
+    elif p["changes_requested"]:
+        key, emoji, text = ("changes_requested", "🔁",
+                            "cambios pedidos por " + ", ".join(p["changes_by"]))
+    elif p["needs_review"]:
+        key, emoji, text = "waiting_review", "⏳", "esperando review"
+    elif p["approved"]:
+        why = ["CI en curso"] if p["ci"] == "pending" else thread_facts(p)
+        text = "aprobado, falta: " + (", ".join(why) or "algo que GitHub no dice")
+        key, emoji = "approved", "✅"
+    elif p["draft"]:
+        key, emoji, text = "draft", "📝", f"draft ({p['draft_days'] or 0} d)"
+    elif p["stale"]:
+        key, emoji, text = "stale", "💤", f"sin movimiento ({p['idle_days']} d)"
+    else:
+        key, emoji, text = "in_review", "👀", "en review"
+    return {"key": key, "rank": STATUS_ORDER.index(key), "emoji": emoji,
+            "text": text}
+
+
+def digest_line(p):
+    """`<emoji> <link> · <state>`, plus `🆕` and the new facts when it moved."""
+    status = p["status"]
+    parts = [f"{status['emoji']} {p['link']}", status["text"]]
+    facts = event_facts(p["events"]) if p["has_events"] else []
+    if status["key"] == "ci_failed" and p["events"]["ci_failed"]:
+        facts = [f for f in facts if not f.startswith("CI rojo en ")]
+    if p["has_events"]:
+        parts.append(" · ".join(["🆕", *facts]) if facts else "🆕")
+    return " · ".join(parts)
+
+
+def digest(prs):
+    """`📋 Tus PRs abiertos (<n>)`: every open PR once, by status rank."""
+    ordered = sorted(prs, key=lambda p: p["status"]["rank"])
+    return {"title": f"📋 Tus PRs abiertos ({len(prs)})",
+            "lines": [p["digest_line"] for p in ordered]}
 
 
 def cmd_my_prs(args):
@@ -796,6 +933,7 @@ def cmd_my_prs(args):
             except RuntimeError as err:
                 out["errors"].append({"pr": f"{org}/{repo}#{listed['number']}",
                                       "error": str(err)})
+    out["digest"] = digest(out["prs"])
     show(out)
 
 

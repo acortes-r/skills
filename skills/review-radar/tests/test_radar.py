@@ -729,6 +729,30 @@ def test_my_prs_drafts_and_stale():
           and pr["stale"] is False, pr)
 
 
+# --- DM lines for my PRs ----------------------------------------------------
+
+NO_EVENTS = {"reviews": [], "comments": [], "commits": [], "ci_failed": None}
+
+
+def state(number=30, **extra):
+    """A my-prs entry with nothing going on; `extra` sets what differs."""
+    p = {"pr": f"acme/tienda-pagos#{number}", "repo": "tienda-pagos",
+         "label": "pagos", "number": number,
+         "link": mod.slack_link("acme", "tienda-pagos", number),
+         "head": HEAD[:7], "has_events": False, "events": dict(NO_EVENTS),
+         "ci": "success", "conflicts": False, "approved": False,
+         "changes_requested": False, "changes_by": [],
+         "threads": {"open": None, "unverified": 0}, "ready": False,
+         "draft": False, "draft_days": None, "idle_days": 0, "stale": False,
+         "has_reviews": True, "needs_review": False}
+    p.update(extra)
+    p["has_events"] = any(p["events"].values())
+    p["status"] = mod.pr_status(p)
+    p["line"] = mod.events_line(p) if p["has_events"] else None
+    p["digest_line"] = mod.digest_line(p)
+    return p
+
+
 def test_links_are_slack_links():
     check("a PR is written <url|label#n> with the github.com URL",
           mod.slack_link("acme", "tienda-pagos", 7)
@@ -741,14 +765,101 @@ def test_links_are_slack_links():
           == "<https://github.com/acme/tienda-pagos/pull/7|pagos#7>", data)
     data, _ = my_prs(my_routes(mine()))
     pr = data["prs"][0]
-    check("my-prs carries the link",
-          pr["link"] == "<https://github.com/acme/tienda-pagos/pull/30|pagos#30>", pr)
+    check("my-prs lines start with the link",
+          pr["link"] == "<https://github.com/acme/tienda-pagos/pull/30|pagos#30>"
+          and pr["digest_line"].split(" · ")[0].endswith(pr["link"]), pr)
     data, code, _ = run(cfg_args("gate", "--pr", "acme/tienda-pagos#7",
                                  "--source", "github"),
                         {"repos/acme/tienda-pagos/pulls/7": RuntimeError("gh: HTTP 502")})
     check("a gate error still carries the link",
           code == 1 and data["link"] == "<https://github.com/acme/tienda-pagos/pull/7|pagos#7>",
           data)
+
+
+def test_digest_order():
+    approved_with_threads = state(9, approved=True,
+                                  threads={"open": 2, "unverified": 0})
+    prs = [state(1),
+           state(2, stale=True, idle_days=5),
+           state(3, draft=True, draft_days=4, has_reviews=False),
+           approved_with_threads,
+           state(5, needs_review=True, has_reviews=False),
+           state(6, changes_requested=True, changes_by=["colega-dos"]),
+           state(7, conflicts=True),
+           state(8, ci="failure"),
+           state(10, approved=True, ready=True)]
+    lines = mod.digest(prs)["lines"]
+    expected = ["🚀 <https://github.com/acme/tienda-pagos/pull/10|pagos#10> · listo para mergear",
+                f"❌ <https://github.com/acme/tienda-pagos/pull/8|pagos#8> · CI rojo en {HEAD[:7]}",
+                "⚠️ <https://github.com/acme/tienda-pagos/pull/7|pagos#7> · tiene conflictos con la base",
+                "🔁 <https://github.com/acme/tienda-pagos/pull/6|pagos#6> · cambios pedidos por colega-dos",
+                "⏳ <https://github.com/acme/tienda-pagos/pull/5|pagos#5> · esperando review",
+                "✅ <https://github.com/acme/tienda-pagos/pull/9|pagos#9> · aprobado, falta: 2 hilos abiertos",
+                "📝 <https://github.com/acme/tienda-pagos/pull/3|pagos#3> · draft (4 d)",
+                "💤 <https://github.com/acme/tienda-pagos/pull/2|pagos#2> · sin movimiento (5 d)",
+                "👀 <https://github.com/acme/tienda-pagos/pull/1|pagos#1> · en review"]
+    check("📋 lists every PR in status order", lines == expected, lines)
+    check("📋 title counts every open PR",
+          mod.digest(prs)["title"] == "📋 Tus PRs abiertos (9)", mod.digest(prs))
+    pending = state(11, approved=True, ci="pending")
+    check("approved and waiting on CI says why it is not ready",
+          pending["digest_line"].endswith("aprobado, falta: CI en curso"),
+          pending["digest_line"])
+
+
+def test_digest_one_line_per_pr():
+    p = state(4, ci="failure", conflicts=True, changes_requested=True,
+              changes_by=["colega-uno"], stale=True, idle_days=6)
+    lines = mod.digest([p])["lines"]
+    check("a PR in several states shows once, under the highest one",
+          len(lines) == 1 and lines[0].startswith("❌ ")
+          and "conflictos" not in lines[0] and "cambios" not in lines[0], lines)
+
+
+def test_digest_new_marker():
+    moved = state(4, approved=True, ready=True, events={
+        **NO_EVENTS,
+        "reviews": [{"author": "colega-uno", "state": "APPROVED", "reviews": 2,
+                     "comments": 0}],
+        "commits": [{"author": "colega-dos", "count": 1}]})
+    still = state(5, needs_review=True)
+    check("a PR that moved since `since` carries 🆕 and its facts",
+          moved["digest_line"] == "🚀 <https://github.com/acme/tienda-pagos/pull/4|pagos#4>"
+          " · listo para mergear · 🆕 · colega-uno aprobó (2 reviews) · colega-dos subió 1 commit",
+          moved["digest_line"])
+    check("a PR that did not move has no 🆕", "🆕" not in still["digest_line"],
+          still["digest_line"])
+    red = state(6, ci="failure", events={**NO_EVENTS, "ci_failed": {"sha": HEAD[:7]}})
+    check("new red CI is not repeated after the status says it",
+          red["digest_line"].count("CI rojo") == 1 and red["digest_line"].endswith("🆕"),
+          red["digest_line"])
+
+
+def test_events_line():
+    p = state(2907, approved=True, ready=True, events={
+        **NO_EVENTS,
+        "reviews": [{"author": "colega-uno", "state": "APPROVED", "reviews": 4, "comments": 0},
+                    {"author": "colega-dos", "state": "APPROVED", "reviews": 1, "comments": 0},
+                    {"author": "colega-tres", "state": "COMMENTED", "reviews": 2, "comments": 3},
+                    {"author": "bots", "logins": ["ci-bot[bot]"], "count": 2, "bot": True}],
+        "comments": [{"author": "bots", "logins": ["ci-bot[bot]"], "count": 1, "bot": True}]})
+    check("📬 line: one fact per person, bots summed, ready last",
+          p["line"] == "✅ <https://github.com/acme/tienda-pagos/pull/2907|pagos#2907>"
+          " · colega-uno aprobó (4 reviews) · colega-dos aprobó"
+          " · colega-tres comentó (2 reviews, 3 comentarios) · bots: 3 · listo para mergear",
+          p["line"])
+    p = state(3196, approved=True, threads={"open": None, "unverified": 2}, events={
+        **NO_EVENTS,
+        "reviews": [{"author": "colega-uno", "state": "APPROVED", "reviews": 1, "comments": 0}]})
+    check("📬 line: approved, CI green, unverified threads",
+          p["line"] == "✅ <https://github.com/acme/tienda-pagos/pull/3196|pagos#3196>"
+          " · colega-uno aprobó · CI verde · 2 hilos sin verificar", p["line"])
+    p = state(1490, events={**NO_EVENTS, "comments": [
+        {"author": "colega-dos", "count": 1, "bot": False}]})
+    check("📬 line: a single comment",
+          p["line"] == "💬 <https://github.com/acme/tienda-pagos/pull/1490|pagos#1490>"
+          " · colega-dos: 1 comentario", p["line"])
+    check("a PR with no events has no 📬 line", state(1)["line"] is None)
 
 
 def test_my_prs_error_does_not_stop_others():

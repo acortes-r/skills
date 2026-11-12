@@ -51,56 +51,48 @@ Severity counts come from `review-result.comments`: the non-zero ones as
 
 ## 📬 Tus PRs
 
-One line per PR with `has_events: true`: `<emoji> <link> · <facts>`.
-
-Facts, in this order, joined by ` · `, each only when present. `radar.py`
-already gives one entry per person: a reviewer's comments sit in their review
-entry, so nobody appears twice.
-
-The parenthesis lists the non-zero counts (`1 review`, `2 reviews`,
-`1 comentario`, `3 comentarios`) and is left out at 1 review and 0 comments:
-`ana-r aprobó (4 reviews)`, `beto-r pidió cambios`, `cami-r comentó (2 reviews,
-3 comentarios)`, `dani-r: 3 comentarios`.
-
-| From | Fact |
-|---|---|
-| `events.reviews`, one per person, in the order given | `<author> aprobó` · `<author> pidió cambios` · `<author> comentó`, by `state`, plus `(<reviews> reviews, <comments> comentarios)` |
-| `events.comments`, people | `<author>: <count> comentarios` (`1 comentario`) |
-| the bots entries of `events.reviews` and `events.comments` | one fact, `bots: <sum of both counts>` |
-| `events.commits` | `<author> subió <count> commits` (`1 commit`) |
-| `events.ci_failed` | `CI rojo en <sha>` |
-| `conflicts` | `tiene conflictos con la base` |
-| `approved`, `ci` is `success`, not `ready` | `CI verde` (`listo para mergear` already implies it) |
-| `ready` | `listo para mergear` |
-| `approved`, not ready, `threads.open` > 0 | `<n> hilos abiertos` |
-| `approved`, not ready, `threads.unverified` > 0 | `<n> hilos sin verificar` |
-
-The emoji is the first that applies: `❌` CI failed, `🔁` changes requested in
-this window, `⚠️` conflicts, `✅` approved in this window or ready, `💬`
-comments or bot reviews, `📥` commits. Only people's reviews count for `🔁` and
-`✅`; `approved`, `changes_requested`, and `ready` already ignore bots.
+Runs where the digest is not due. One reply: `📬 Tus PRs`, then the `line` of
+every PR in `my-prs` with `has_events: true`, as `radar.py` wrote it:
+`<emoji> <link> · <facts>`. The emoji is the first that applies: `❌` CI
+turned red, `🔁` someone asked for changes, `⚠️` conflicts, `✅` approved or
+ready, `💬` comments or bot reviews, `📥` commits. Each person appears once,
+with their reviews and comments counted; bots add up into one `bots: <n>`.
 
 ```
-✅ funnel#2907 · ana-r aprobó (4 reviews) · eli-r aprobó · cami-r comentó (2 reviews) · bots: 3 · listo para mergear
-✅ purchase#3196 · beto-r aprobó · CI verde · 2 hilos abiertos
-✅ purchase#3201 · beto-r aprobó · CI verde · 2 hilos sin verificar
-💬 integrations#1490 · dani-r: 3 comentarios · bots: 1
-🔁 funnel#2910 · angel-r pidió cambios · CI rojo en 9f3e21c
-📥 purchase#3188 · carlos-r subió 2 commits
+📬 Tus PRs
+✅ <…/pull/2907|funnel#2907> · ana-r aprobó (4 reviews) · eli-r aprobó · cami-r comentó (2 reviews) · bots: 3 · listo para mergear
+✅ <…/pull/3196|purchase#3196> · beto-r aprobó · CI verde · 2 hilos abiertos
+💬 <…/pull/1490|integrations#1490> · dani-r: 3 comentarios · bots: 1
+🔁 <…/pull/2910|funnel#2910> · angel-r pidió cambios · CI rojo en 9f3e21c
+📥 <…/pull/3188|purchase#3188> · carlos-r subió 2 commits
 ```
 
-## 🗓️ Pendientes
+## 📋 Tus PRs abiertos
 
-Only when the digest is due: `first_run_of_day` and `my_prs.daily_digest`, or
-a run asked for `resumen`. Over every open PR `my-prs` returned, whether or not
-it had events. Skip an empty group; when all are empty, write
-`🗓️ Pendientes: nada`.
+When the digest is due (`first_run_of_day` and `my_prs.daily_digest`, or a run
+that asked for `resumen`), this replaces `📬 Tus PRs`. One reply: `my-prs`
+`digest.title`, then its `digest.lines`, in order. Every open PR appears once,
+under its highest-priority `status`; a PR that moved since `since` adds `🆕`
+and the same facts it would have had in `📬`.
+
+| Order | Status | Line |
+|---|---|---|
+| 1 | ready | `🚀 <link> · listo para mergear` |
+| 2 | red CI | `❌ <link> · CI rojo en <head>` |
+| 3 | conflicts | `⚠️ <link> · tiene conflictos con la base` |
+| 4 | changes requested | `🔁 <link> · cambios pedidos por <logins>` |
+| 5 | no review yet | `⏳ <link> · esperando review` |
+| 6 | approved, not ready | `✅ <link> · aprobado, falta: <CI en curso / n hilos …>` |
+| 7 | draft | `📝 <link> · draft (<days> d)` |
+| 8 | no activity for `stale_days` | `💤 <link> · sin movimiento (<days> d)` |
+| 9 | anything else | `👀 <link> · en review` |
 
 ```
-🗓️ Pendientes
-🚀 Listos para mergear: <link>, …                 ← ready
-📝 Drafts: <link> (<draft_days> d), …
-💤 Sin movimiento: <link> (<idle_days> d), …     ← stale and not draft
-⏳ Sin review: <link>, …                          ← needs_review
-⚠️ Con conflictos: <link>, …                      ← conflicts
+📋 Tus PRs abiertos (4)
+🚀 <…/pull/3196|purchase#3196> · listo para mergear · 🆕 · beto-r aprobó
+⏳ <…/pull/3201|purchase#3201> · esperando review
+📝 <…/pull/2911|funnel#2911> · draft (6 d)
+💤 <…/pull/1488|integrations#1488> · sin movimiento (4 d)
 ```
+
+No open PRs: `📋 Tus PRs abiertos (0)` alone.
