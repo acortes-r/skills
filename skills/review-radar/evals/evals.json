@@ -54,6 +54,27 @@
         "Adds the digest because first_run_of_day and daily_digest are true.",
         "Posts nothing on GitHub for my own PRs."
       ]
+    },
+    {
+      "id": 6,
+      "prompt": "/review-radar. Mode live, scheduled run at 11:07. The gate says review for two PRs. My DM shows the 10:07 run's thread with `🔒 revisando purchase#3201 @ 9f3e21c [rr:reservamos/platform-purchase#3201@9f3e21c]` posted 40 minutes ago and no result line with that token.",
+      "expected_output": "purchase#3201 gets `⏭️ … omitido: ya en revisión en otra corrida` and is not reviewed. The other PR is claimed with a 🔒 line, confirmed with lock --mine, reviewed, and its result line ends with its [rr:…] token.",
+      "expectations": [
+        "Reads the DM history of the last 2 × lock_minutes and the radar threads before deciding, and writes review-radar-locks.json with ts, thread and text.",
+        "Runs radar.py lock without --mine first, and again with --mine <ts> after posting its own 🔒.",
+        "Does not invoke review-changes for the locked PR.",
+        "Each 🔒 and each result is its own reply in the run's thread; the result line carries the same token as the 🔒."
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "/review-radar. Mode live. Reading the DM history fails with a connector error before reviewing the only PR the gate let through.",
+      "expected_output": "The lock file gets {\"error\": …}; radar.py lock answers skip with candados ilegibles; the PR gets `⏭️ … omitido: candados ilegibles` and review-changes is not invoked.",
+      "expectations": [
+        "Writes an error object to the lock file instead of an empty list.",
+        "Skips the review rather than going ahead without locks.",
+        "Posts no 🔒 line for that PR."
+      ]
     }
   ]
 }

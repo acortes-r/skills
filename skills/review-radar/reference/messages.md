@@ -25,18 +25,25 @@ Busqué en GitHub (<github.me>, @<request_teams>) y Slack (@<group names>, DMs)
 `(vía Slack: <requested_by, comma-separated>)` goes at the end of a line when
 the PR's `sources` include `slack`.
 
+In live mode, every line after a PR's `🔒` that ends that PR (✅ 💬 📝 📭 ⚠️,
+or the `⏭️` of a lost tie-break) ends with the same `<token>`,
+`[rr:<owner>/<repo>#<n>@<head>]`, after the `vía Slack` part. The token
+releases the lock; see [locks.md](locks.md).
+
 Severity counts come from `review-result.comments`: the non-zero ones as
 `<n> 🔴`, `<n> 🟠`, `<n> 🔵`, joined by ` · `; `sin comentarios` when all are 0.
 
 | Case | Line |
 |---|---|
 | dry, gate `review` | `🔍 <label>#<n> · <author> · revisaría` |
+| live, claiming the PR | `🔒 revisando <label>#<n> @ <head> <token>` |
 | `action: approved` | `✅ <label>#<n> · <author> · Ronda <round> (<head>) · <counts> · aprobado` |
 | `action: commented` | `💬 <label>#<n> · <author> · Ronda <round> (<head>) · <counts> · comentarios publicados` |
 | `action: summary-only` | `📝 <label>#<n> · <author> · Ronda <round> (<head>) · solo resumen: <reason>` |
 | `action: nothing-sent` | `📭 <label>#<n> · <author> · nada nuevo` |
 | `action: error`, missing block, checkout failure | `⚠️ <label>#<n> · <author> · error: <reason>` |
 | over `max_reviews_per_run` | `⏳ <label>#<n> · <author> · queda para la siguiente corrida` |
+| `radar.py lock` says `skip` | `⏭️ <label>#<n> · <author> · omitido: <lock reason>` |
 | gate `skip` | `⏭️ <label>#<n> · <author> · omitido: <gate reason>` |
 | gate `error` | `⚠️ <label>#<n> · error: <gate reason>` |
 
