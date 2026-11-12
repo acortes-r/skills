@@ -60,6 +60,16 @@ resolve.json is a JSON array of review-thread node ids to resolve after the
 review is published:
     ["PRRT_kwDOAbc123"]
 
+Read-only subcommands print normalized JSON, through REST so they work in
+Claude Code cloud sessions, where GraphQL answers 403:
+    post_review.py pr --repo owner/name --pr 123       # metadata and file names
+    post_review.py diff --repo owner/name --pr 123     # the unified diff
+    post_review.py threads --repo owner/name --pr 123  # threads, reviews, PR comments
+`threads` tries GraphQL, takes the CCR route (`ccr/review_threads`) when the
+session refuses GraphQL, and falls back to REST comments with resolution
+unknown. A thread read through CCR has the id `comment:<root comment id>`, and
+--resolve resolves it through `ccr/comments/<id>/resolve`.
+
 Requires python3 and an authenticated GitHub CLI. Does not require jq.
 """
 
@@ -103,6 +113,23 @@ query($id: ID!) {
 }
 """
 
+THREADS_QUERY = """
+query($owner: String!, $repo: String!, $num: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $num) {
+      reviewThreads(first: 100) { nodes {
+        id isResolved isOutdated path line
+        comments(first: 50) { nodes {
+          databaseId url author { login } body createdAt } } } }
+    }
+  }
+}
+"""
+
+# A thread read through the CCR route has no node id. Its id is its root
+# comment's, under this prefix, and it is resolved through that route too.
+CCR_THREAD = "comment:"
+
 RESOLVE_MUTATION = """
 mutation($id: ID!) {
   resolveReviewThread(input: {threadId: $id}) { thread { isResolved } }
@@ -130,6 +157,44 @@ def gh(args, stdin=None):
     if done.returncode != 0:
         raise RuntimeError(done.stderr.strip() or f"gh {' '.join(args)} failed")
     return done.stdout
+
+
+def graphql_blocked(err):
+    """True when GraphQL is refused to this session, not merely failing.
+
+    Claude Code cloud sessions answer every GraphQL call with HTTP 403 and
+    point to REST. This is the one place that recognizes it; every GraphQL
+    caller asks here before taking the CCR route.
+    """
+    text = str(err)
+    return "403" in text and "not available from Claude Code sessions" in text
+
+
+def gh_pages(endpoint):
+    """Every item of a paginated REST list.
+
+    `gh api --paginate` prints one JSON array per page back to back, which a
+    single json.loads cannot read past the first page.
+    """
+    raw = gh(["api", endpoint, "--paginate"]) or "[]"
+    decoder, items, index = json.JSONDecoder(), [], 0
+    while index < len(raw):
+        if raw[index].isspace():
+            index += 1
+            continue
+        page, index = decoder.raw_decode(raw, index)
+        items.extend(page if isinstance(page, list) else [page])
+    return items
+
+
+def pull_request(repo, pr):
+    """The PR's REST object. REST, so it works where GraphQL is refused."""
+    return json.loads(gh(["api", f"repos/{repo}/pulls/{pr}"]) or "{}")
+
+
+def pr_diff(repo, pr):
+    return gh(["api", f"repos/{repo}/pulls/{pr}",
+               "-H", "Accept: application/vnd.github.diff"])
 
 
 def commentable_lines(patch):
@@ -164,14 +229,13 @@ def commentable_lines(patch):
 def existing_comments(repo, pr):
     """Inline comments already on the PR, or None when they cannot be read."""
     try:
-        raw = gh(["api", f"repos/{repo}/pulls/{pr}/comments", "--paginate"])
+        return gh_pages(f"repos/{repo}/pulls/{pr}/comments")
     except RuntimeError as err:
         # Not fatal: without this the run may repost a comment, which is better
         # than refusing to publish at all. Say so plainly.
         print(f"post_review: could not read existing comments ({err}). "
               "Idempotency check skipped.", file=sys.stderr)
         return None
-    return json.loads(raw or "[]")
 
 
 def first_line(body):
@@ -247,10 +311,10 @@ def load_summary(path):
 
 def head_sha(repo, pr):
     try:
-        raw = gh(["pr", "view", str(pr), "--repo", repo, "--json", "headRefOid"])
+        data = pull_request(repo, pr)
     except RuntimeError as err:
         fail(f"could not read the head commit of PR #{pr} in {repo}: {err}")
-    return json.loads(raw or "{}").get("headRefOid", "")
+    return (data.get("head") or {}).get("sha", "")
 
 
 def viewer_login():
@@ -271,10 +335,10 @@ def our_reviews(repo, pr, login):
     if not login:
         fail("could not read the login this run publishes as. Nothing sent.")
     try:
-        raw = gh(["api", f"repos/{repo}/pulls/{pr}/reviews", "--paginate"])
+        reviews = gh_pages(f"repos/{repo}/pulls/{pr}/reviews")
     except RuntimeError as err:
         fail(f"could not read existing reviews ({err}). Nothing sent.")
-    return [item for item in json.loads(raw or "[]")
+    return [item for item in reviews
             if (item.get("user") or {}).get("login") == login]
 
 
@@ -440,22 +504,154 @@ def send_replies(args, pending):
     return failed
 
 
-def resolvable_threads(ids, login):
+def rest_comment(item):
+    return {"id": item.get("id"),
+            "author": (item.get("user") or {}).get("login"),
+            "body": item.get("body") or "",
+            "createdAt": item.get("created_at"),
+            "url": item.get("html_url")}
+
+
+def graphql_threads(repo, pr):
+    owner, name = repo.split("/", 1)
+    raw = gh(["api", "graphql", "-f", f"query={THREADS_QUERY}",
+              "-F", f"owner={owner}", "-F", f"repo={name}", "-F", f"num={pr}"])
+    pull = (((json.loads(raw or "{}").get("data") or {}).get("repository") or {})
+            .get("pullRequest") or {})
+    threads = []
+    for node in (pull.get("reviewThreads") or {}).get("nodes") or []:
+        threads.append({
+            "id": node.get("id"),
+            "isResolved": bool(node.get("isResolved")),
+            "isOutdated": bool(node.get("isOutdated")),
+            "path": node.get("path"),
+            "line": node.get("line"),
+            "comments": [{"id": c.get("databaseId"),
+                          "author": (c.get("author") or {}).get("login"),
+                          "body": c.get("body") or "",
+                          "createdAt": c.get("createdAt"),
+                          "url": c.get("url")}
+                         for c in (node.get("comments") or {}).get("nodes") or []],
+        })
+    return threads
+
+
+def normalize_ccr(raw_threads, rest_comments):
+    """CCR threads in the shape the GraphQL query yields.
+
+    `ccr/review_threads` answers
+        [{"resolved": bool, "outdated": bool, "path": str, "line": int|null,
+          "comment_ids": [int, ...]}]
+    with no node id, authors, or bodies. `comment_ids[0]` is the root and the
+    rest are replies in order, so each id is filled in from the REST comments.
+    The root id, prefixed with CCR_THREAD, stands in for the thread id. `line`
+    is null on an outdated thread and stays null. An id REST does not return
+    is dropped and reported, never fatal.
+    """
+    by_id = {item.get("id"): item for item in rest_comments}
+    threads = []
+    for raw in raw_threads:
+        ids = raw.get("comment_ids") or []
+        missing = [cid for cid in ids if cid not in by_id]
+        if missing:
+            print(f"post_review: CCR thread on {raw.get('path')} names comments "
+                  f"REST does not return: {missing}. Ignored.", file=sys.stderr)
+        threads.append({
+            "id": f"{CCR_THREAD}{ids[0]}" if ids else None,
+            "isResolved": bool(raw.get("resolved")),
+            "isOutdated": bool(raw.get("outdated")),
+            "path": raw.get("path"),
+            "line": raw.get("line"),
+            "comments": [rest_comment(by_id[cid]) for cid in ids if cid in by_id],
+        })
+    return threads
+
+
+def rest_threads(rest_comments):
+    """Threads rebuilt from REST comments: no thread id, no resolution state."""
+    roots, replies = [], {}
+    for item in rest_comments:
+        parent = item.get("in_reply_to_id")
+        if parent:
+            replies.setdefault(parent, []).append(item)
+        else:
+            roots.append(item)
+    threads = []
+    for root in roots:
+        chain = [root] + sorted(replies.get(root.get("id"), []),
+                                key=lambda c: c.get("created_at") or "")
+        threads.append({"id": None, "isResolved": False, "isOutdated": None,
+                        "path": root.get("path"), "line": root.get("line"),
+                        "comments": [rest_comment(c) for c in chain]})
+    return threads
+
+
+def read_threads(repo, pr):
+    """(source, threads): GraphQL, then CCR when GraphQL is refused, then REST.
+
+    Only the cloud-session refusal takes the CCR route. Any other GraphQL
+    failure, or a CCR failure, falls to REST, where resolution is unknown.
+    """
+    try:
+        return "graphql", graphql_threads(repo, pr)
+    except RuntimeError as err:
+        blocked = graphql_blocked(err)
+        if not blocked:
+            print(f"post_review: GraphQL failed ({err}).", file=sys.stderr)
+    rest = gh_pages(f"repos/{repo}/pulls/{pr}/comments")
+    if blocked:
+        try:
+            raw = json.loads(gh(["api", f"repos/{repo}/pulls/{pr}/ccr/review_threads"])
+                             or "[]")
+            return "ccr", normalize_ccr(raw, rest)
+        except (RuntimeError, ValueError) as err:
+            print(f"post_review: CCR review threads failed ({err}).", file=sys.stderr)
+    print("post_review: resolution state unknown; every thread is treated as "
+          "unresolved.", file=sys.stderr)
+    return "rest", rest_threads(rest)
+
+
+def ccr_thread(repo, pr, thread_id, cache):
+    """The normalized CCR thread whose id is `thread_id`, or None."""
+    if "threads" not in cache:
+        rest = gh_pages(f"repos/{repo}/pulls/{pr}/comments")
+        raw = json.loads(gh(["api", f"repos/{repo}/pulls/{pr}/ccr/review_threads"])
+                         or "[]")
+        cache["threads"] = {t["id"]: t for t in normalize_ccr(raw, rest)}
+    return cache["threads"].get(thread_id)
+
+
+def thread_root(repo, pr, thread_id, cache):
+    """(isResolved, root author, root body) for one thread id.
+
+    A CCR id reads the CCR listing; any other id is a GraphQL node.
+    """
+    if thread_id.startswith(CCR_THREAD):
+        found = ccr_thread(repo, pr, thread_id, cache)
+        if found is None:
+            raise RuntimeError("not among the CCR review threads")
+        root = (found["comments"] or [{}])[0]
+        return found["isResolved"], root.get("author"), root.get("body") or ""
+    raw = gh(["api", "graphql", "-f", f"query={THREAD_QUERY}",
+              "-F", f"id={thread_id}"])
+    node = (json.loads(raw or "{}").get("data") or {}).get("node") or {}
+    roots = (node.get("comments") or {}).get("nodes") or [{}]
+    return (node.get("isResolved"), (roots[0].get("author") or {}).get("login"),
+            roots[0].get("body") or "")
+
+
+def resolvable_threads(repo, pr, ids, login):
     """The subset of thread ids that are open and were opened by us."""
-    keep = []
+    keep, cache = [], {}
     for thread_id in ids:
         try:
-            raw = gh(["api", "graphql", "-f", f"query={THREAD_QUERY}",
-                      "-F", f"id={thread_id}"])
-        except RuntimeError as err:
+            resolved, author, body = thread_root(repo, pr, thread_id, cache)
+        except (RuntimeError, ValueError) as err:
             print(f"post_review: could not read thread {thread_id} ({err}). "
                   "Not resolving it.", file=sys.stderr)
             continue
-        node = (json.loads(raw or "{}").get("data") or {}).get("node") or {}
-        roots = (node.get("comments") or {}).get("nodes") or [{}]
-        author = (roots[0].get("author") or {}).get("login")
-        body = (roots[0].get("body") or "").lstrip()
-        if node.get("isResolved"):
+        body = body.lstrip()
+        if resolved:
             continue
         if not login or author != login or not body.startswith(tuple(SEVERITY_WORDS)):
             print(f"post_review: thread {thread_id} was not opened by this "
@@ -465,13 +661,23 @@ def resolvable_threads(ids, login):
     return keep
 
 
-def resolve_threads(ids):
+def resolve_thread(repo, pr, thread_id):
+    """GraphQL for a node id; the CCR route for a CCR id."""
+    if thread_id.startswith(CCR_THREAD):
+        comment_id = thread_id[len(CCR_THREAD):]
+        gh(["api", "-X", "POST",
+            f"repos/{repo}/pulls/{pr}/ccr/comments/{comment_id}/resolve"])
+        return
+    gh(["api", "graphql", "-f", f"query={RESOLVE_MUTATION}",
+        "-F", f"id={thread_id}"])
+
+
+def resolve_threads(repo, pr, ids):
     """Resolve each thread. Returns how many failed."""
     failed = 0
     for thread_id in ids:
         try:
-            gh(["api", "graphql", "-f", f"query={RESOLVE_MUTATION}",
-                "-F", f"id={thread_id}"])
+            resolve_thread(repo, pr, thread_id)
         except RuntimeError as err:
             failed += 1
             print(f"post_review: thread {thread_id} could not be resolved.\n{err}",
@@ -536,7 +742,7 @@ def run_approve(args):
         pending_replies, _ = unsent_replies(replies, replied_signatures(known))
     if findings:
         try:
-            patch = gh(["pr", "diff", str(args.pr), "--repo", args.repo])
+            patch = pr_diff(args.repo, args.pr)
         except RuntimeError as err:
             fail(f"could not read the diff for PR #{args.pr} in {args.repo}: {err}")
         inline, new_lines, _ = split_findings(
@@ -553,7 +759,7 @@ def run_approve(args):
     if sha:
         payload["commit_id"] = sha
 
-    threads = resolvable_threads(resolve, login)
+    threads = resolvable_threads(args.repo, args.pr, resolve, login)
     counters = (f"round={number} notes={len(notes)} inline={len(inline)} "
                 f"degraded={len(new_lines) - len(inline)} "
                 f"replies={len(pending_replies)} resolve={len(threads)}")
@@ -574,7 +780,7 @@ def run_approve(args):
     # never reads as closing a question nobody answered.
     failed = send_replies(args, pending_replies)
     url = send_review(args, payload, "approval")
-    failed += resolve_threads(threads)
+    failed += resolve_threads(args.repo, args.pr, threads)
     print(f"post_review: published as {APPROVE_EVENT} — {counters}")
     if url:
         print(f"post_review: {url}")
@@ -584,7 +790,57 @@ def run_approve(args):
         sys.exit(1)
 
 
+def show(data):
+    print(json.dumps(data, indent=2, ensure_ascii=False))
+
+
+def read_command(name, argv):
+    """`pr`, `diff`, `threads`: read-only, REST first, JSON on stdout."""
+    parser = argparse.ArgumentParser(prog=f"post_review.py {name}")
+    parser.add_argument("--repo", required=True, help="owner/name")
+    parser.add_argument("--pr", required=True, type=int)
+    args = parser.parse_args(argv)
+    try:
+        if name == "diff":
+            sys.stdout.write(pr_diff(args.repo, args.pr))
+        elif name == "pr":
+            data = pull_request(args.repo, args.pr)
+            files = gh_pages(f"repos/{args.repo}/pulls/{args.pr}/files")
+            show({"number": data.get("number"), "title": data.get("title"),
+                  "body": data.get("body") or "",
+                  "author": (data.get("user") or {}).get("login"),
+                  "authorIsBot": (data.get("user") or {}).get("type") == "Bot",
+                  "draft": bool(data.get("draft")),
+                  "base": (data.get("base") or {}).get("ref"),
+                  "head": (data.get("head") or {}).get("ref"),
+                  "headSha": (data.get("head") or {}).get("sha"),
+                  "url": data.get("html_url"),
+                  "files": [f.get("filename") for f in files]})
+        else:
+            source, threads = read_threads(args.repo, args.pr)
+            reviews = gh_pages(f"repos/{args.repo}/pulls/{args.pr}/reviews")
+            issue = gh_pages(f"repos/{args.repo}/issues/{args.pr}/comments")
+            show({"source": source,
+                  "resolution": "unknown" if source == "rest" else "known",
+                  "threads": threads,
+                  "reviews": [{"id": r.get("id"),
+                               "author": (r.get("user") or {}).get("login"),
+                               "state": r.get("state"), "body": r.get("body") or "",
+                               "commitId": r.get("commit_id"),
+                               "submittedAt": r.get("submitted_at")}
+                              for r in reviews],
+                  "issueComments": [rest_comment(c) for c in issue]})
+    except RuntimeError as err:
+        fail(f"could not read {name} for PR #{args.pr} in {args.repo}: {err}")
+
+
+READ_COMMANDS = ("pr", "diff", "threads")
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] in READ_COMMANDS:
+        read_command(sys.argv[1], sys.argv[2:])
+        return
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument("--repo", required=True, help="owner/name")
     parser.add_argument("--pr", required=True, type=int)
@@ -624,7 +880,7 @@ def main():
     targets = set()
     if findings:
         try:
-            patch = gh(["pr", "diff", str(args.pr), "--repo", args.repo])
+            patch = pr_diff(args.repo, args.pr)
         except RuntimeError as err:
             fail(f"could not read the diff for PR #{args.pr} in {args.repo}: {err}")
         targets = commentable_lines(patch)
@@ -642,7 +898,7 @@ def main():
     login = viewer_login()
     reviews = our_reviews(args.repo, args.pr, login)
     number = next_round(reviews)
-    threads = resolvable_threads(resolve, login)
+    threads = resolvable_threads(args.repo, args.pr, resolve, login)
 
     # A round with nothing new at a commit that already has one would only
     # notify the author twice about the same code.
@@ -681,7 +937,7 @@ def main():
 
     url = send_review(args, payload, "review") if payload is not None else ""
 
-    failed = send_replies(args, pending_replies) + resolve_threads(threads)
+    failed = send_replies(args, pending_replies) + resolve_threads(args.repo, args.pr, threads)
 
     print(f"post_review: published as {REVIEW_EVENT} — {counters}")
     if url:
