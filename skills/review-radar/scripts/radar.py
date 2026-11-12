@@ -19,6 +19,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import time
 
 HERE = pathlib.Path(__file__).resolve().parent
 POST_REVIEW = HERE.parent.parent / "review-changes" / "scripts" / "post_review.py"
@@ -263,6 +264,50 @@ def api_pages(endpoint):
     raise RuntimeError(f"{endpoint}: more than {MAX_PAGES} pages")
 
 
+# The search API allows 30 requests a minute; clock and sleep are swapped in tests.
+SEARCH_PER_MINUTE = 30
+SEARCH_MAX_PAGES = 10  # search returns at most 1000 results
+clock, sleep = time.monotonic, time.sleep
+_search_times = []
+
+
+def search_throttle():
+    """Wait when the last minute already holds SEARCH_PER_MINUTE searches."""
+    now = clock()
+    recent = [t for t in _search_times if now - t < 60]
+    if len(recent) >= SEARCH_PER_MINUTE:
+        sleep(60 - (now - recent[0]) + 1)
+    _search_times[:] = recent + [clock()]
+
+
+def search_issues(query):
+    """Every issue/PR the search API returns for `query`, paged by hand."""
+    items = []
+    for page in range(1, SEARCH_MAX_PAGES + 1):
+        args = ["api", "-X", "GET", "search/issues", "-f", f"q={query}",
+                "-f", f"per_page={PER_PAGE}", "-f", f"page={page}"]
+        search_throttle()
+        try:
+            raw = gh(args)
+        except RuntimeError as err:
+            if "rate limit" not in str(err).lower():
+                raise
+            sleep(60)
+            search_throttle()
+            raw = gh(args)
+        batch = (json.loads(raw or "{}") or {}).get("items") or []
+        items.extend(batch)
+        if len(batch) < PER_PAGE:
+            break
+    return items
+
+
+def search_ref(item):
+    """owner/repo#n of a search result."""
+    full = (item.get("repository_url") or "").split("/repos/", 1)[-1]
+    return f"{full}#{item.get('number')}"
+
+
 def review_threads(full, number):
     """(source, threads) from post_review.py threads."""
     done = subprocess.run([sys.executable, str(POST_REVIEW), "threads",
@@ -436,23 +481,43 @@ def collect_github(args, cfg, out):
             out["not_candidate"] = {"pr": args.pr,
                                     "reason": "sin review pedido a mí ni review mío"}
         return
-    for repo in cfg["github"]["repos"]:
+    found = {}
+    for query in search_queries(cfg):
         try:
-            pulls = api_pages(f"repos/{org}/{repo}/pulls?state=open")
+            hits = search_issues(query)
         except RuntimeError as err:
-            out["errors"].append({"repo": f"{org}/{repo}", "error": str(err)})
+            out["errors"].append({"search": query, "error": str(err)})
             continue
-        for pr in pulls:
-            if login(pr.get("user")) == me:
-                continue  # my own PRs belong to my-prs
-            try:
-                reason = why_candidate(pr, cfg, org, repo)
-            except RuntimeError as err:
-                out["errors"].append({"pr": f"{org}/{repo}#{pr['number']}",
-                                      "error": str(err)})
-                continue
-            if reason:
-                out["candidates"].append({**pr_summary(pr, org, repo), "why": reason})
+        for item in hits:
+            if login(item.get("user")) != me:  # my own PRs belong to my-prs
+                found.setdefault(search_ref(item), item)
+    for ref in found:
+        owner, repo, number = parse_ref(ref)
+        if owner != org or repo not in cfg["github"]["repos"]:
+            continue
+        try:
+            pr = api(f"repos/{owner}/{repo}/pulls/{number}")
+            reason = why_candidate(pr, cfg, owner, repo)
+        except RuntimeError as err:
+            out["errors"].append({"pr": ref, "error": str(err)})
+            continue
+        if reason:
+            out["candidates"].append({**pr_summary(pr, owner, repo), "why": reason})
+
+
+def search_queries(cfg):
+    """One search per way a PR can be mine to review, over the configured repos.
+
+    The search narrows the list; why_candidate still decides, so a request to a
+    team outside request_teams, or a thread reply counted as a review, drops out.
+    """
+    gh_cfg = cfg["github"]
+    org, me = gh_cfg["org"], gh_cfg["me"]
+    base = "is:pr is:open " + " ".join(f"repo:{org}/{r}" for r in gh_cfg["repos"])
+    return ([f"{base} review-requested:{me}"]
+            + [f"{base} team-review-requested:{org}/{team}"
+               for team in gh_cfg.get("request_teams") or []]
+            + [f"{base} reviewed-by:{me}"])
 
 
 # --- gate -------------------------------------------------------------------

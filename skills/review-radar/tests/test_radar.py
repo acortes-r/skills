@@ -116,6 +116,13 @@ def run(argv, routes, threads=("graphql", [])):
         assert args[0] == "api", f"only REST api calls allowed: {args!r}"
         assert "graphql" not in args, f"GraphQL is forbidden: {args!r}"
         assert "--paginate" not in args, f"--paginate breaks in the cloud: {args!r}"
+        if args[1:3] == ["-X", "GET"]:
+            endpoint = args[3]
+            fields = dict(args[i + 1].split("=", 1) for i in range(4, len(args))
+                          if args[i] == "-f")
+            calls.append((endpoint, fields))
+            value = routes[endpoint]
+            return json.dumps(value(fields) if callable(value) else value)
         endpoint = args[1]
         calls.append(endpoint)
         path = endpoint.split("?", 1)[0]
@@ -242,29 +249,97 @@ def test_since_accepts_utc():
 # --- candidates -------------------------------------------------------------
 
 
-EMPTY_WEB = {"repos/acme/tienda-web/pulls": []}
+def hit(number, repo="tienda-pagos", author="colega-uno"):
+    """A search/issues result for a PR."""
+    return {"number": number, "user": {"login": author, "type": "User"},
+            "repository_url": f"https://api.example.test/repos/acme/{repo}",
+            "pull_request": {}}
+
+
+def search(requested=(), team=(), reviewed=()):
+    """search/issues answering by qualifier, one page each."""
+    def answer(fields):
+        q = fields["q"]
+        items = (requested if "review-requested:yo-ficticio" in q
+                 and "team-" not in q else
+                 team if "team-review-requested:" in q else
+                 reviewed if "reviewed-by:" in q else [])
+        return {"total_count": len(items),
+                "items": list(items) if fields["page"] == "1" else []}
+    return answer
 
 
 def test_candidates_requested_user_and_team():
-    routes = {"repos/acme/tienda-pagos/pulls": [
-                  pull(1, reviewers=["yo-ficticio"]),
-                  pull(2, teams=["nucleo"]),
-                  pull(3, teams=["otro-team"]),
-                  pull(4, author="yo-ficticio")],
-              "repos/acme/tienda-pagos/pulls/3/reviews": [review("colega-dos")],
-              **EMPTY_WEB}
+    routes = {"search/issues": search(requested=[hit(1), hit(3), hit(4, author="yo-ficticio")],
+                                      team=[hit(2)]),
+              "repos/acme/tienda-pagos/pulls/1": pull(1, reviewers=["yo-ficticio"]),
+              "repos/acme/tienda-pagos/pulls/2": pull(2, teams=["nucleo"]),
+              "repos/acme/tienda-pagos/pulls/3": pull(3, teams=["otro-team"]),
+              "repos/acme/tienda-pagos/pulls/3/reviews": [review("colega-dos")]}
     data, _, calls = run(cfg_args("candidates"), routes)
     got = {c["number"]: c["why"] for c in data["candidates"]}
     check("requested to me or to a configured team counts; others do not",
           got == {1: "review pedido a yo-ficticio", 2: "review pedido a @nucleo"}, got)
     check("my own PRs are left to my-prs",
-          "repos/acme/tienda-pagos/pulls/4/reviews" not in calls, calls)
+          "repos/acme/tienda-pagos/pulls/4" not in calls, calls)
+    check("no open PR is listed repo by repo",
+          not any(isinstance(c, str) and c.split("?")[0].endswith("/pulls")
+                  for c in calls), calls)
+
+
+def test_candidates_search_queries():
+    routes = {"search/issues": search(requested=[hit(1)], reviewed=[hit(1)]),
+              "repos/acme/tienda-pagos/pulls/1": pull(1, reviewers=["yo-ficticio"])}
+    data, _, calls = run(cfg_args("candidates"), routes)
+    queries = [fields["q"] for endpoint, fields in
+               (c for c in calls if isinstance(c, tuple))]
+    base = "is:pr is:open repo:acme/tienda-pagos repo:acme/tienda-web"
+    check("three searches over the configured repos: me, each team, reviewed by me",
+          queries == [f"{base} review-requested:yo-ficticio",
+                      f"{base} team-review-requested:acme/nucleo",
+                      f"{base} reviewed-by:yo-ficticio"], queries)
+    check("a PR found by two searches is evaluated once",
+          calls.count("repos/acme/tienda-pagos/pulls/1") == 1
+          and len(data["candidates"]) == 1, calls)
+
+
+def test_search_pages_by_hand():
+    full = [hit(n) for n in range(1, mod.PER_PAGE + 1)]
+    pages = []
+
+    def answer(fields):
+        pages.append(fields["page"])
+        return {"items": full if fields["page"] == "1" else [hit(900)]}
+
+    routes = {"search/issues": answer}
+    for n in list(range(1, mod.PER_PAGE + 1)) + [900]:
+        routes[f"repos/acme/tienda-pagos/pulls/{n}"] = pull(n, reviewers=["yo-ficticio"])
+    data, _, _ = run(cfg_args("candidates"), routes)
+    check("a full search page asks for the next one",
+          pages[:2] == ["1", "2"] and len(data["candidates"]) == mod.PER_PAGE + 1,
+          pages)
+
+
+def test_search_respects_rate_limit():
+    waits, now = [], [1000.0]
+    originals = mod.clock, mod.sleep, list(mod._search_times)
+    mod.clock = lambda: now[0]
+    mod.sleep = lambda seconds: (waits.append(seconds), now.__setitem__(0, now[0] + seconds))
+    mod._search_times[:] = []
+    try:
+        for _ in range(mod.SEARCH_PER_MINUTE + 1):
+            mod.search_throttle()
+    finally:
+        mod.clock, mod.sleep = originals[0], originals[1]
+        mod._search_times[:] = originals[2]
+    check("the 31st search in a minute waits for the window to free up",
+          len(waits) == 1 and 60 <= waits[0] <= 62, waits)
 
 
 def test_candidates_re_review():
-    routes = {"repos/acme/tienda-pagos/pulls": [pull(5)],
-              "repos/acme/tienda-pagos/pulls/5/reviews": [review("yo-ficticio")],
-              **EMPTY_WEB}
+    routes = {"search/issues": search(reviewed=[hit(5)]),
+              "repos/acme/tienda-pagos/pulls/5": pull(5),
+              "repos/acme/tienda-pagos/pulls/5/reviews": [review("yo-ficticio")]}
     data, _, _ = run(cfg_args("candidates"), routes)
     check("a PR I reviewed before stays a candidate after GitHub drops me (b)",
           [c["number"] for c in data["candidates"]] == [5]
@@ -277,9 +352,9 @@ def reply(author, commit=OLD, at="2026-03-09T19:00:00Z"):
 
 
 def test_candidates_thread_reply_is_not_a_review():
-    routes = {"repos/acme/tienda-pagos/pulls": [pull(6, author="externo-ficticio")],
-              "repos/acme/tienda-pagos/pulls/6/reviews": [reply("yo-ficticio")],
-              **EMPTY_WEB}
+    routes = {"search/issues": search(reviewed=[hit(6, author="externo-ficticio")]),
+              "repos/acme/tienda-pagos/pulls/6": pull(6, author="externo-ficticio"),
+              "repos/acme/tienda-pagos/pulls/6/reviews": [reply("yo-ficticio")]}
     data, _, _ = run(cfg_args("candidates"), routes)
     check("a thread reply on an outside author's PR does not make it a candidate",
           data["candidates"] == [], data)
@@ -303,8 +378,8 @@ def test_candidates_dedupe_github_and_slack():
         {"pr": "acme/tienda-pagos#1", "requested_by": "Colega Dos"},
         {"url": "https://github.com/acme/tienda-web/pull/12", "requested_by": "Colega Dos"},
     ]))
-    routes = {"repos/acme/tienda-pagos/pulls": [pull(1, reviewers=["yo-ficticio"])],
-              "repos/acme/tienda-web/pulls": [],
+    routes = {"search/issues": search(requested=[hit(1)]),
+              "repos/acme/tienda-pagos/pulls/1": pull(1, reviewers=["yo-ficticio"]),
               "repos/acme/tienda-web/pulls/12": pull(12, author="externo-ficticio")}
     data, _, _ = run(cfg_args("candidates", "--slack", str(slack)), routes)
     by_pr = {c["pr"]: c for c in data["candidates"]}
