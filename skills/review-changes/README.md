@@ -420,14 +420,14 @@ review-changes/
 │   ├── frontend.md               # client state, a11y, weight
 │   └── security.md               # authz, injection, secrets
 ├── scripts/post_review.py        # deterministic publisher
-├── tests/test_post_review.py     # 30 tests over the publisher, gh stubbed
+├── tests/test_post_review.py     # 35 tests over the publisher, gh stubbed
 ├── evals/evals.json              # 62 scenarios
 └── agents/openai.yaml            # host adapter
 ```
 
 ## Tests
 
-The publisher has 30 tests. No network, no dependencies, no test runner:
+The publisher has 35 tests. No network, no dependencies, no test runner:
 
 ```bash
 python3 skills/review-changes/tests/test_post_review.py
@@ -435,8 +435,9 @@ python3 skills/review-changes/tests/test_post_review.py
 
 They stub `gh`, so nothing reaches GitHub. They cover the two guarantees that
 are expensive to get wrong — a comment is never posted twice, and the same head
-commit is never approved twice — plus round numbering, thread resolution, and
-the flag combinations the publisher refuses.
+commit is never approved twice — plus round numbering, thread resolution, the
+flag combinations the publisher refuses, and the exit codes and printed lines
+an unattended run acts on.
 
 `evals/evals.json` is a different thing: 62 declarative scenarios describing what
 the skill should do. The repository has no eval runner, so they are read, not
