@@ -455,7 +455,7 @@ review-changes/
 │   └── security.md               # authz, injection, secrets
 ├── scripts/post_review.py        # deterministic publisher; pr, diff, threads reads
 ├── tests/test_post_review.py     # 43 tests over the publisher, gh stubbed
-├── evals/evals.json              # 70 scenarios
+├── evals/evals.json              # 71 scenarios
 └── agents/openai.yaml            # host adapter
 ```
 
@@ -474,7 +474,7 @@ flag combinations the publisher refuses, and the exit codes and printed lines
 an unattended `--auto` run acts on, and the GraphQL → CCR → REST fallback for
 review threads.
 
-`evals/evals.json` is a different thing: 70 declarative scenarios describing what
+`evals/evals.json` is a different thing: 71 declarative scenarios describing what
 the skill should do. The repository has no eval runner, so they are read, not
 executed.
 

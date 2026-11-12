@@ -773,6 +773,18 @@
         "Records reduced-context:no-gh and does not run the publisher.",
         "Ends with a review-result block with action error, round null, and a reason that names the missing gh."
       ]
+    },
+    {
+      "id": 71,
+      "prompt": "/review-changes --auto https://github.com/acme/app/pull/640. The run is inside a subagent launched by a routine, so the host offers no Agent tool. The diff changes 40 lines in app/services/refunds.rb (money, full depth), every routed profile runs, and the only finding that survives verification is a 🔵 suggestion.",
+      "expected_output": "Verify runs inline as its own block, the ledger records it as ran with inline in the detail, coverage counts as full, and under --auto the round is sent as APPROVE with the suggestion.",
+      "expectations": [
+        "Runs the verify pass inline as an explicit block, since no subagent is available.",
+        "Records the verify row as ran, with inline in its detail.",
+        "Treats coverage as full: no reduced-context entry and no profile left unrun.",
+        "Sends APPROVE under --auto because only a 🔵 survives at full coverage.",
+        "The review-result block reports action approved."
+      ]
     }
   ]
 }
