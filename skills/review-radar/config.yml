@@ -8,6 +8,8 @@ github:
 slack:
   me: U0774V5HCJF
   team_groups: [S0C022VG8MT]     # menciones a estos grupos = solicitud a mí
+  team_group_names:              # cómo nombrarlos en el DM, sin hacer ping
+    S0C022VG8MT: merchant-services
   include_dms: true
   notify_channel: U0774V5HCJF    # DM conmigo
 schedule:
