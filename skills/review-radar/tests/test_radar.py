@@ -729,6 +729,28 @@ def test_my_prs_drafts_and_stale():
           and pr["stale"] is False, pr)
 
 
+def test_links_are_slack_links():
+    check("a PR is written <url|label#n> with the github.com URL",
+          mod.slack_link("acme", "tienda-pagos", 7)
+          == "<https://github.com/acme/tienda-pagos/pull/7|pagos#7>")
+    data, _, _ = run(cfg_args("candidates"), {"search/issues": search(requested=[hit(7)]),
+                                              "repos/acme/tienda-pagos/pulls/7":
+                                                  pull(7, reviewers=["yo-ficticio"])})
+    check("candidates carry the link",
+          data["candidates"][0]["link"]
+          == "<https://github.com/acme/tienda-pagos/pull/7|pagos#7>", data)
+    data, _ = my_prs(my_routes(mine()))
+    pr = data["prs"][0]
+    check("my-prs carries the link",
+          pr["link"] == "<https://github.com/acme/tienda-pagos/pull/30|pagos#30>", pr)
+    data, code, _ = run(cfg_args("gate", "--pr", "acme/tienda-pagos#7",
+                                 "--source", "github"),
+                        {"repos/acme/tienda-pagos/pulls/7": RuntimeError("gh: HTTP 502")})
+    check("a gate error still carries the link",
+          code == 1 and data["link"] == "<https://github.com/acme/tienda-pagos/pull/7|pagos#7>",
+          data)
+
+
 def test_my_prs_error_does_not_stop_others():
     routes = my_routes(mine())
     routes["repos/acme/tienda-web/pulls"] = RuntimeError("gh: HTTP 502")

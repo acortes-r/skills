@@ -1,8 +1,10 @@
 # Messages
 
-Every message goes to `slack.notify_channel`. Lines use the PR's `label`
-(`platform-purchase` → `purchase`), `#<number>`, and the GitHub login. Names
-are plain text, never `<@…>` or `<!subteam^…>`.
+Every message goes to `slack.notify_channel`, sent with
+`unfurl_app_links: false` so GitHub links get no previews. A PR is always the
+`link` that `radar.py` prints, `<https://github.com/<org>/<repo>/pull/<n>|<label>#<n>>`
+(`platform-purchase` → `purchase`), in every section. People are their GitHub
+login. Names are plain text, never `<@…>` or `<!subteam^…>`.
 
 ## Start message
 
@@ -35,21 +37,21 @@ Severity counts come from `review-result.comments`: the non-zero ones as
 
 | Case | Line |
 |---|---|
-| dry, gate `review` | `🔍 <label>#<n> · <author> · revisaría` |
-| live, claiming the PR | `🔒 revisando <label>#<n> @ <head> <token>` |
-| `action: approved` | `✅ <label>#<n> · <author> · Ronda <round> (<head>) · <counts> · aprobado` |
-| `action: commented` | `💬 <label>#<n> · <author> · Ronda <round> (<head>) · <counts> · comentarios publicados` |
-| `action: summary-only` | `📝 <label>#<n> · <author> · Ronda <round> (<head>) · solo resumen: <reason>` |
-| `action: nothing-sent` | `📭 <label>#<n> · <author> · nada nuevo` |
-| `action: error`, missing block, checkout failure | `⚠️ <label>#<n> · <author> · error: <reason>` |
-| over `max_reviews_per_run` | `⏳ <label>#<n> · <author> · queda para la siguiente corrida` |
-| `radar.py lock` says `skip` | `⏭️ <label>#<n> · <author> · omitido: <lock reason>` |
-| gate `skip` | `⏭️ <label>#<n> · <author> · omitido: <gate reason>` |
-| gate `error` | `⚠️ <label>#<n> · error: <gate reason>` |
+| dry, gate `review` | `🔍 <link> · <author> · revisaría` |
+| live, claiming the PR | `🔒 revisando <link> @ <head> <token>` |
+| `action: approved` | `✅ <link> · <author> · Ronda <round> (<head>) · <counts> · aprobado` |
+| `action: commented` | `💬 <link> · <author> · Ronda <round> (<head>) · <counts> · comentarios publicados` |
+| `action: summary-only` | `📝 <link> · <author> · Ronda <round> (<head>) · solo resumen: <reason>` |
+| `action: nothing-sent` | `📭 <link> · <author> · nada nuevo` |
+| `action: error`, missing block, checkout failure | `⚠️ <link> · <author> · error: <reason>` |
+| over `max_reviews_per_run` | `⏳ <link> · <author> · queda para la siguiente corrida` |
+| `radar.py lock` says `skip` | `⏭️ <link> · <author> · omitido: <lock reason>` |
+| gate `skip` | `⏭️ <link> · <author> · omitido: <gate reason>` |
+| gate `error` | `⚠️ <link> · error: <gate reason>` |
 
 ## 📬 Tus PRs
 
-One line per PR with `has_events: true`: `<emoji> <label>#<n> · <facts>`.
+One line per PR with `has_events: true`: `<emoji> <link> · <facts>`.
 
 Facts, in this order, joined by ` · `, each only when present. `radar.py`
 already gives one entry per person: a reviewer's comments sit in their review
@@ -96,9 +98,9 @@ it had events. Skip an empty group; when all are empty, write
 
 ```
 🗓️ Pendientes
-🚀 Listos para mergear: <label>#<n>, …                 ← ready
-📝 Drafts: <label>#<n> (<draft_days> d), …
-💤 Sin movimiento: <label>#<n> (<idle_days> d), …     ← stale and not draft
-⏳ Sin review: <label>#<n>, …                          ← needs_review
-⚠️ Con conflictos: <label>#<n>, …                      ← conflicts
+🚀 Listos para mergear: <link>, …                 ← ready
+📝 Drafts: <link> (<draft_days> d), …
+💤 Sin movimiento: <link> (<idle_days> d), …     ← stale and not draft
+⏳ Sin review: <link>, …                          ← needs_review
+⚠️ Con conflictos: <link>, …                      ← conflicts
 ```

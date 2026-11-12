@@ -345,9 +345,15 @@ def parse_ref(text):
     return match.group(1), match.group(2), int(match.group(3))
 
 
+def slack_link(owner, repo, number):
+    """`<label>#<n>` as a Slack link to the PR: the only form the DM uses."""
+    return f"<https://github.com/{owner}/{repo}/pull/{number}|{label(repo)}#{number}>"
+
+
 def pr_summary(pr, owner, repo):
     return {"pr": f"{owner}/{repo}#{pr['number']}", "repo": repo,
             "label": label(repo), "number": pr["number"],
+            "link": slack_link(owner, repo, pr["number"]),
             "title": pr.get("title") or "", "author": login(pr.get("user")),
             "url": pr.get("html_url"),
             "head": ((pr.get("head") or {}).get("sha") or "")[:7]}
@@ -570,7 +576,9 @@ def cmd_gate(args):
     try:
         decision, reason, summary = decide(cfg, args.pr, args.source)
     except RuntimeError as err:
-        show({"pr": args.pr, "decision": "error", "reason": str(err)})
+        owner, repo, number = parse_ref(args.pr)
+        show({"pr": args.pr, "link": slack_link(owner, repo, number),
+              "decision": "error", "reason": str(err)})
         sys.exit(1)
     show({"pr": args.pr, **summary, "decision": decision, "reason": reason,
           "source": args.source})

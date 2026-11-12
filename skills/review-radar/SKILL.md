@@ -51,7 +51,7 @@ in the suffix below; the prefix varies by host (`mcp__Slack__`,
 | Search messages in channels, DMs, and group DMs | `slack_search_public_and_private` |
 | Read my DM's history (live mode, for locks) | `slack_read_channel` |
 | Read a thread (the parent of a reply, a run's thread) | `slack_read_thread` |
-| Send to my DM, or reply in that message's thread | `slack_send_message` |
+| Send to my DM, or reply in that message's thread (`unfurl_app_links: false`) | `slack_send_message` |
 
 No search tool: skip Slack detection and add `Slack: sin conector` to the start
 message. No send tool: print the messages in the session output and stop.
@@ -122,7 +122,7 @@ The PRs whose gate said `review`, in candidate order.
      following [reference/locks.md](reference/locks.md), then
      `$R lock $C --lines <file> --pr <pr> --sha <head>`. `skip` →
      `⏭️ … omitido: <reason>`, next PR.
-  2. **Claim.** Reply `🔒 revisando <label>#<n> @ <head> <token>` and keep
+  2. **Claim.** Reply `🔒 revisando <link> @ <head> <token>` and keep
      its `ts`.
   3. **Confirm.** Read the locks again and run the same `lock` with
      `--mine <ts>`. `skip` (another run claimed it first) →
