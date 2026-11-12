@@ -22,33 +22,31 @@ not reclassify them here.
 
 ## Collect
 
-Run the thread query once per review. `prior-reviews.md` reads the same result.
+Run this once per review. `prior-reviews.md` reads the same result; write no
+query of your own.
 
 ```bash
-# Inline threads with resolution state — preferred source
-gh api graphql -f query='
-  query($owner:String!,$repo:String!,$num:Int!){
-    repository(owner:$owner,name:$repo){
-      pullRequest(number:$num){
-        reviewThreads(first:100){ nodes{
-          id isResolved isOutdated path line
-          comments(first:20){ nodes{ databaseId url author{login} body createdAt } } } } } } }' \
-  -F owner=<owner> -F repo=<repo> -F num=<n>
-
-# Fallback when GraphQL is unavailable: no resolution state
-gh api repos/<owner>/<repo>/pulls/<n>/comments --paginate \
-  --jq '.[] | {path, line, user: .user.login, body}'
-
-# PR-level comments — bot summaries live here
-gh api repos/<owner>/<repo>/issues/<n>/comments --paginate \
-  --jq '.[] | {user: .user.login, body}'
-
-# Review bodies and states
-gh pr view <n> --json reviews
+python3 scripts/post_review.py threads --repo <owner>/<name> --pr <n>
 ```
 
-Used the REST fallback: resolution state is unknown. Treat every thread as
-unresolved and say so in the ledger.
+It prints one JSON object:
+
+```
+{"source": "graphql|ccr|rest", "resolution": "known|unknown",
+ "threads": [{"id", "isResolved", "isOutdated", "path", "line",
+              "comments": [{"id", "author", "body", "createdAt", "url"}]}],
+ "reviews": [{"id", "author", "state", "body", "commitId", "submittedAt"}],
+ "issueComments": [{"id", "author", "body", "createdAt", "url"}]}
+```
+
+`comments[0]` is the thread's first comment; the rest are replies, oldest
+first. `issueComments` are the PR-level comments, where bot summaries live.
+`line` is `null` on an outdated thread.
+
+`source` says where the threads came from: GraphQL; the CCR route, when a
+Claude Code cloud session refuses GraphQL; or REST, when both are unavailable.
+`resolution: unknown` (REST): treat every thread as unresolved, its
+`isOutdated` as unknown, and say so in the ledger.
 
 Classify each author as human or bot. Known review bots: `coderabbitai`,
 `codacy-production`, `sonarcloud`, `sonarqubecloud`, `codecov`, `sourcery-ai`,

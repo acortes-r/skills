@@ -43,21 +43,21 @@ needs the login too, so this run reports locally and sends nothing.
 
 ## Collect
 
-The `reviewThreads` query in `existing-comments.md` already returns everything
-this pass needs, including `comments(first:20)` per thread. Run it once and use
-it for both passes. Do not issue a second query.
+The `threads` output in `existing-comments.md` already carries everything this
+pass needs. Run it once and use it for both passes. Do not issue a second
+query.
 
 What this pass reads that the other one discards:
 
-- `comments.nodes[1..]` — the replies. The other pass only looks at the first.
+- `comments[1..]` — the replies. The other pass only looks at the first.
 - `isResolved`, `isOutdated`, `path`, `line` — for the disposition.
-- Each reply's `author.login` and `createdAt`.
-- The thread `id` — the node id that resolving needs — and the first comment's
-  `url` for the round body.
+- Each reply's `author` and `createdAt`.
+- The thread `id` — what resolving needs, whatever its `source` — and the
+  first comment's `url` for the round body.
 
-REST fallback (`/pulls/<n>/comments`) carries `in_reply_to_id` but no resolution
-state. Replies are still readable; resolution is not. Record it and treat every
-thread as unresolved.
+`resolution: unknown` (the REST source) still has the replies, but no
+resolution state and no thread `id`. Record it and treat every thread as
+unresolved; none can be resolved.
 
 ## Read the reply
 
@@ -120,10 +120,11 @@ This pass hands step 7 two lists for `summary.json` and the ids for
 - **`pendientes`** — every live thread, every round, at its current line, with
   the first comment's `url`. A live problem stays visible until it is settled.
 - **`resueltos`** — settled threads the author has not been told about yet. Read
-  the bodies of our earlier rounds (`gh pr view <n> --json reviews`, already
+  the bodies of our earlier rounds (`reviews` in the `threads` output, already
   collected): a thread whose line already appears under `Resueltos` in one of
   them is left out. Round 1 has no earlier round, so it has no `resueltos`.
-- **`resolve.json`** — the node `id` of every open `resuelto-confirmado` thread.
+- **`resolve.json`** — the `id` of every open `resuelto-confirmado` thread, as
+  `threads` printed it.
   The question in the resumen block names how many, and the publisher refuses
   any thread this account did not open with a severity marker.
 
