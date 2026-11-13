@@ -5,7 +5,7 @@ license: MIT
 compatibility: Built for a Claude Code cloud routine. Requires python3, an authenticated GitHub CLI (gh) used over REST only, the review-changes skill installed next to this one, a Slack connector (search, read channel, read thread, send message), and the configured repositories cloned in the session.
 allowed-tools: Read, Grep, Glob, Bash, Skill, Agent
 metadata:
-  version: 0.2.0
+  version: 0.2.1
   writes: my Slack DM (slack.notify_channel) only; GitHub only through review-changes
   modes: dry (lists what it would review) | live (runs review-changes --auto)
   posted_language: es
@@ -65,12 +65,10 @@ Read `config.yml`. Run `$R since $C`; keep `since`, `first_run_of_day`, and
 
 The run is an **event run** when the routine's prompt carries a GitHub
 `pull_request` event (a payload with `pull_request` and `repository`, or the
-PR URL it names). Anything else (the schedule, "Run now", a fired trigger)
-is a **scheduled run**.
+PR URL it names). Anything else (the schedule, "Run now") is a **scheduled
+run**.
 
-The **digest is due** when `first_run_of_day` and `my_prs.daily_digest` hold,
-or when a scheduled run's prompt or fire payload contains `resumen` (any case):
-that run sends `📋 Tus PRs abiertos` whatever the hour.
+The **digest is due** when `first_run_of_day` and `my_prs.daily_digest` hold.
 
 ### 2. Event run
 

@@ -79,12 +79,12 @@
     },
     {
       "id": 8,
-      "prompt": "Routine fired by API at 15:42 on a Wednesday with the text \"manda el resumen\". Mode dry. One of my PRs is approved, CI green, no review threads; another is a draft for 2 days. No candidates.",
-      "expected_output": "A start message and a 📋 Tus PRs abiertos (2) reply even though it is not the first run of the day: 🚀 listo para mergear first, then 📝 draft (2 d).",
+      "prompt": "/review-radar via \"Run now\" at 15:42 on a Wednesday. Mode dry. One of my PRs got an approval after 15:07 and is now ready to merge; another is a draft for 2 days with no activity. No candidates.",
+      "expected_output": "A start message and a 📬 Tus PRs reply with the approved PR's line. No 📋 Tus PRs abiertos digest: this is not the first run of the day, and the draft does not appear.",
       "expectations": [
-        "Treats the run as a scheduled run whose digest is due because the payload contains resumen.",
-        "Does not apply the early exit.",
-        "Lists the ready PR first with 🚀, each PR once, as <url|label#n> links."
+        "Treats \"Run now\" as a scheduled run with since 15:07 from radar.py since (35 min after the 15:07 slot, past the 30 min grace).",
+        "Sends 📬 Tus PRs with the line radar.py wrote for the PR with events.",
+        "Does not send 📋 Tus PRs abiertos, since first_run_of_day is false."
       ]
     }
   ]
