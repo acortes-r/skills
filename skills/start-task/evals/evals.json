@@ -38,8 +38,8 @@
     },
     {
       "id": 4,
-      "prompt": "/start-task add a retry to the CDS client. HERDR_ENV is not set in this session.",
-      "expected_output": "The skill stops and says it is not running inside Herdr. No branch or worktree is created.",
+      "prompt": "/start-task add a retry to the CDS client. Neither HERDR_ENV nor HC_TERMINAL_ID is set in this session.",
+      "expected_output": "The skill stops and says it is not running inside Herdr, TUI or app. No branch or worktree is created.",
       "expectations": [
         "Stops when the script refuses to run outside Herdr.",
         "Does not fall back to plain git worktree add.",
@@ -136,6 +136,17 @@
         "Reads START_TASK_AGENT before the confirmation.",
         "Proposes cursor as the agent.",
         "Accepts a correction to another kind and shows the four values again."
+      ]
+    },
+    {
+      "id": 14,
+      "prompt": "/start-task INT3-160. The agent runs in the Herdr app: HC_TERMINAL_ID is set, HERDR_ENV is not, and herdr-app and hc are on PATH. The issue's gitBranchName is int3-160-seat-hold-timeout.",
+      "expected_output": "The worktree is created by git, shown as a new space named INT3-160, the user's view stays on their space, and the agent in the space's first terminal is pointed at the brief.",
+      "expectations": [
+        "Runs the same scripts; does not stop because HERDR_ENV is unset.",
+        "Does not call the herdr TUI CLI or retry with --trust-repository.",
+        "Takes the space ID from .result.workspace.workspace_id and passes it to start-agent.sh.",
+        "Reports that it ran in the Herdr app, with the space ID and the agent's terminal address."
       ]
     }
   ]

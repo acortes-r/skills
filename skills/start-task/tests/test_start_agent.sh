@@ -4,7 +4,7 @@
 set -uo pipefail
 
 script="$(cd "$(dirname "$0")/.." && pwd -P)/scripts/start-agent.sh"
-unset START_TASK_AGENT  # tests set it explicitly; a value from the shell would skew them
+unset START_TASK_AGENT HERDR_ENV HC_TERMINAL_ID  # tests set them explicitly; the shell's would skew them
 pass=0
 fail=0
 
@@ -127,6 +127,74 @@ check "malformed kind exits non-zero" '[ "$rc" -ne 0 ] && [ ! -e "$log" ]'
 setup "$shell_pane"
 PATH="$sandbox/bin:$PATH" HERDR_ENV= "$script" w9 MER-63 "$sandbox/brief.md" >"$sandbox/out" 2>&1; rc=$?
 check "outside Herdr exits non-zero" '[ "$rc" -ne 0 ] && [ ! -e "$log" ]'
+
+# --- Herdr app backend: herdr-app and hc stubbed ---
+
+# setup_app <terminal-get-json>: space spW whose first terminal is t9. A send flips
+# t9 to working, as the agent taking the prompt would.
+setup_app() {
+  sandbox="$(cd "$(mktemp -d)" && pwd -P)"
+  sandboxes+=("$sandbox")
+  log="$sandbox/app.log"
+  printf '%s' "$1" > "$sandbox/get.json"
+  printf 'Task brief\nline two\n' > "$sandbox/brief.md"
+  mkdir -p "$sandbox/bin"
+  cat > "$sandbox/bin/herdr-app" <<EOF
+#!/usr/bin/env bash
+echo "app \$*" >> "$log"
+echo '{"spaces":[{"id":"spW","tabs":[{"terminals":[{"terminal":"t9"},{"terminal":"t10"}]}]}]}'
+EOF
+  cat > "$sandbox/bin/hc" <<EOF
+#!/usr/bin/env bash
+printf 'hc %s\n' "\$*" >> "$log"
+case "\$1" in
+  get)  cat "$sandbox/get.json" ;;
+  send) echo '{"address":"t9","status":{"app":"x","state":"working"}}' > "$sandbox/get.json"; echo '{}' ;;
+esac
+EOF
+  chmod +x "$sandbox/bin/herdr-app" "$sandbox/bin/hc"
+}
+
+run_app() { PATH="$sandbox/bin:$PATH" HC_TERMINAL_ID=t7 "$script" "$@" >"$sandbox/out" 2>&1; rc=$?; }
+
+app_shell='{"address":"t9","foreground":{"argv":["/bin/zsh","-l"]},"status":null}'
+app_idle_claude='{"address":"t9","foreground":{"argv":["claude"]},"status":{"app":"claude-code","state":"idle"}}'
+
+# 16. App shell at the prompt: the launch is typed into the space's first terminal.
+setup_app "$app_shell"
+run_app spW MER-63 "$sandbox/brief.md"
+check "app shell exits 0" '[ "$rc" -eq 0 ]'
+check "app shell types claude with the quoted prompt" 'grep -qF "hc send t9 claude '"'"'Read the task brief in $sandbox/brief.md and start on it.'"'"'" "$log"'
+check "app brief text itself is never sent" '! grep -q "Task brief" "$log"'
+check "app prints the terminal once it works" 'grep -q "\"state\":\"working\"" "$sandbox/out"'
+
+# 17. App idle Claude Code: prompted in place, nothing typed into a shell.
+setup_app "$app_idle_claude"
+run_app spW MER-63 "$sandbox/brief.md"
+check "app idle claude is prompted with the brief path" '[ "$rc" -eq 0 ] && grep -qF "hc send t9 Read the task brief in $sandbox/brief.md" "$log"'
+
+# 18. App busy agent: refuses, sends nothing.
+setup_app '{"address":"t9","foreground":{"argv":["claude"]},"status":{"app":"claude-code","state":"working"}}'
+run_app spW MER-63 "$sandbox/brief.md"
+check "app busy terminal exits non-zero" '[ "$rc" -ne 0 ] && ! grep -q "^hc send" "$log"'
+
+# 19. App program that is not a shell nor an agent: refuses.
+setup_app '{"address":"t9","foreground":{"argv":["vim"]},"status":null}'
+run_app spW MER-63 "$sandbox/brief.md"
+check "app foreign program exits non-zero" '[ "$rc" -ne 0 ] && ! grep -q "^hc send" "$log"'
+
+# 20. App with codex asked: types codex; an idle Claude Code is refused for it.
+setup_app "$app_shell"
+run_app spW MER-63 "$sandbox/brief.md" codex
+check "app codex kind types codex" 'grep -qF "hc send t9 codex '"'"'Read the task brief" "$log"'
+setup_app "$app_idle_claude"
+run_app spW MER-63 "$sandbox/brief.md" codex
+check "app idle claude refused when codex is asked" '[ "$rc" -ne 0 ] && ! grep -q "^hc send" "$log"'
+
+# 21. App unknown space: refuses.
+setup_app "$app_shell"
+run_app spNOPE MER-63 "$sandbox/brief.md"
+check "app unknown space exits non-zero" '[ "$rc" -ne 0 ] && ! grep -q "^hc send" "$log"'
 
 echo
 echo "$pass passed, $fail failed"
