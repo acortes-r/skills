@@ -40,10 +40,11 @@ The **window** starts at the scheduled slot before this run, with no stored
 state: Monday 9:07 covers from Friday 18:07, and a "Run now" at 20:00 covers
 from 18:07.
 
-The **gate** skips, in order: unconfigured repo, closed or merged, draft, my
-own PR, an author outside my team I never reviewed (GitHub requests only), a
-head I already reviewed, and new commits that are only merges from the base. A
-reply on a thread does not count as a review.
+The **gate** skips, in order: unconfigured repo, closed or merged, my own PR,
+an author outside my team I never reviewed (GitHub requests only), draft, a
+head I already reviewed, and new commits that are only merges from the base.
+The author rule goes before draft, so a draft's reason says whether it will be
+reviewed once it is ready. A reply on a thread does not count as a review.
 
 In live mode, a **lock** keeps two overlapping runs off the same PR. Before
 reviewing, a run posts `🔒 revisando … [rr:<owner>/<repo>#<n>@<sha>]` in its

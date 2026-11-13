@@ -415,10 +415,10 @@ def test_gate_rules_in_order():
         ("repo no configurado", {}, "acme/otro-repo#7", "github"),
         ("mergeado", gate_routes(pull(merged=True, state="closed")), None, "github"),
         ("cerrado", gate_routes(pull(state="closed")), None, "github"),
-        ("draft", gate_routes(pull(draft=True)), None, "github"),
-        ("PR propio", gate_routes(pull(author="yo-ficticio")), None, "github"),
+        ("PR propio", gate_routes(pull(author="yo-ficticio", draft=True)), None, "github"),
         ("autor fuera de Merchant Services",
          gate_routes(pull(author="externo-ficticio")), None, "github"),
+        ("draft", gate_routes(pull(draft=True)), None, "github"),
         (f"ya revisado en {HEAD[:7]}",
          gate_routes(pull(), [review("yo-ficticio", commit=HEAD)]), None, "github"),
         ("solo merges de la base",
@@ -453,6 +453,20 @@ def test_gate_outside_author():
                                {"commits": [commit_item("externo-ficticio")]}))
     check("an outside author I already reviewed is re-reviewed (b)",
           data["decision"] == "review", data)
+
+
+def test_gate_outside_author_before_draft():
+    data, _ = gate(gate_routes(pull(author="externo-ficticio", draft=True)))
+    check("a draft by an outside author I never reviewed says the author, not draft",
+          data["decision"] == "skip"
+          and data["reason"] == "autor fuera de Merchant Services", data)
+    data, _ = gate(gate_routes(pull(author="externo-ficticio", draft=True)), source="slack")
+    check("the same draft asked for in Slack is skipped as draft",
+          data["decision"] == "skip" and data["reason"] == "draft", data)
+    data, _ = gate(gate_routes(pull(author="externo-ficticio", draft=True),
+                               [review("yo-ficticio")]))
+    check("a draft by an outside author I already reviewed is skipped as draft",
+          data["decision"] == "skip" and data["reason"] == "draft", data)
 
 
 def test_gate_ignores_thread_replies():
