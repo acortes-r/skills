@@ -69,8 +69,8 @@ with their reviews and comments counted; bots add up into one `bots: <n>`.
 
 ## 📋 Tus PRs abiertos
 
-When the digest is due (`first_run_of_day` and `my_prs.daily_digest`, or a run
-that asked for `resumen`), this replaces `📬 Tus PRs`. One reply: `my-prs`
+When the digest is due (`first_run_of_day` and `my_prs.daily_digest`), this
+replaces `📬 Tus PRs`. One reply: `my-prs`
 `digest.title`, then its `digest.lines`, in order.
 
 Every open PR appears once: `<emoji> <link> · <main state> · <other states> ·
