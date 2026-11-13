@@ -13,6 +13,8 @@ policy:
     - herdr_workspace_create
     - herdr_agent_start
     - herdr_agent_prompt
+    - herdr_app_space_create
+    - hc_send
   gated_actions:
     # Only after the user confirms the proposed branch name.
     - git_worktree_create

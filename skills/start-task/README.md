@@ -1,7 +1,7 @@
 # start-task
 
 Starts a task in its own git worktree, opened as a Herdr
-workspace. Give it a Linear issue or a short description of the work; it names the
+workspace: a workspace in Herdr TUI, a space in the Herdr app. Give it a Linear issue or a short description of the work; it names the
 branch, asks which base to branch from, creates the worktree, and hands back the
 absolute path.
 
@@ -86,6 +86,12 @@ terminal, and the agent can reread it later:
 | idle agent of that kind | renamed to `<name>` and reused, never a second one, then prompted |
 | busy agent, or another agent kind | refuses; nothing is sent |
 
+In the Herdr app the first pane is the space's first terminal. A shell there gets the
+launch typed in with `hc send` (`claude 'Read the task brief in …'`), and an idle agent
+gets the prompt the same way. herdr-core reports Claude Code as `claude-code`; other
+kinds by their own name. The agent is not renamed: the space carries the label, and
+the agent is addressed by its terminal (`t9`).
+
 The agent is named after the label, normalized to Herdr's rules (`MER-63` →
 `mer-63`), with `-2`, `-3`, … on a clash. The script returns as soon as the agent
 is `working`, `done`, or `blocked`; it does not wait for the turn to end. If the
@@ -97,7 +103,8 @@ reports it and leaves the answer to you.
 `scripts/start-worktree.sh <branch> <label> [base]` holds every step that must not
 vary between runs:
 
-1. Refuses to run outside a Herdr pane (`HERDR_ENV=1`), with an invalid branch
+1. Refuses to run outside Herdr (neither `HERDR_ENV=1` from the TUI nor
+   `HC_TERMINAL_ID` from the app), with an invalid branch
    name, or with a base that exists neither on `origin` nor locally.
 2. Finds the main clone, also when called from inside a linked worktree.
 3. Fetches the base: `origin/<base>` when the remote has it, the local branch
@@ -118,6 +125,17 @@ An existing branch keeps its history: the base only applies to a new one.
 
 The workspace opens with `--no-focus`: your view stays where it was.
 
+**In the Herdr app.** The app has no worktree command, so git does every row of the
+table (a new branch with `git worktree add --no-track`), and the app shows the result
+as a space: `herdr-app do space.new --name <label> --folder <worktree>`. A space
+already showing that folder is reused instead. `space.new` brings the new space
+forward, so the script selects the caller's space again right after. The response
+keeps the TUI's shape, with the space ID in `.result.workspace.workspace_id`.
+
+`scripts/backend.sh` picks the kind: `HERDR_ENV=1` means the TUI and wins when both
+are set; otherwise `HC_TERMINAL_ID` plus `herdr-app` and `hc` on `PATH` mean the app.
+The two run separate servers and share no workspaces or agents.
+
 **Why the upstream is dropped.** A branch created from `origin/main` tracks
 `origin/main`. A bare `git push` then fails with a name mismatch and `git pull`
 pulls the base into your branch. With no upstream, the first
@@ -130,17 +148,21 @@ bash skills/start-task/tests/test_start_worktree.sh
 bash skills/start-task/tests/test_start_agent.sh
 ```
 
-Both stub `herdr`, so no real session or network is touched.
+Both stub `herdr`, `herdr-app` and `hc`, so no real session or network is touched.
 
 `test_start_worktree.sh` builds throwaway repositories. They cover the four branch states, calling from a linked
 worktree, the exclude lines written once, the dropped upstream, an explicit,
-local-only, and missing base, the `--bases` listing, and the refusals.
+local-only, and missing base, the `--bases` listing, and the refusals. In the app:
+the new space and the view handed back, a reused space, a tracked remote branch, and
+the TUI winning when both are set.
 
 `test_start_agent.sh` covers starting in a shell with the prompt on the command
 line, reusing an idle agent of the asked kind, the kind from the argument,
 `$START_TASK_AGENT`, or the `claude` default, the brief sent as an absolute path and never as
 text, name normalization and clashes, and refusing a busy pane, another agent kind, a malformed kind, an empty
-brief, or a run outside Herdr.
+brief, or a run outside Herdr. In the app: typing the launch into a shell, prompting
+an idle agent, and refusing a busy terminal, a foreign program, another kind, or an
+unknown space.
 
 `evals/evals.json` describes what the agent should do around the script. The
 repository has no eval runner, so the evals are read, not executed.
@@ -152,8 +174,9 @@ start-task/
 ├── SKILL.md                      # naming rules, base choice, and the run
 ├── scripts/start-worktree.sh     # deterministic worktree + workspace creation
 ├── scripts/start-agent.sh        # the agent in the workspace, pointed at the brief
-├── tests/test_start_worktree.sh  # 27 checks, herdr stubbed
-├── tests/test_start_agent.sh     # 26 checks, herdr stubbed
+├── scripts/backend.sh            # Herdr TUI or Herdr app, sourced by both scripts
+├── tests/test_start_worktree.sh  # 44 checks, herdr, herdr-app and hc stubbed
+├── tests/test_start_agent.sh     # 36 checks, herdr, herdr-app and hc stubbed
 ├── evals/evals.json              # agent-level scenarios
 └── agents/openai.yaml            # host adapter
 ```
@@ -163,8 +186,10 @@ start-task/
 - `git` 2.20+
 - `python3`, to read Herdr's JSON
 - The agent's CLI on `PATH`: Claude Code by default, or Codex, Cursor, …
-- Herdr 0.9+, with the agent running inside a Herdr pane. The script calls the
-  `herdr` CLI directly; the separate `herdr` skill is not needed.
+- Herdr, either kind, with the agent running inside it:
+  - Herdr TUI 0.9+, in a pane. The scripts call the `herdr` CLI directly; the
+    separate `herdr` skill is not needed.
+  - The Herdr app, in one of its terminals, with `herdr-app` and `hc` on `PATH`.
 - A Linear MCP connector to read issues (optional; without it the name is built
   from the ID and title you give)
 

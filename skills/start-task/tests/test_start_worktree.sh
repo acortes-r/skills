@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Tests for scripts/start-worktree.sh. Builds throwaway git repos and stubs `herdr`,
-# so nothing touches a real Herdr session or the network.
+# `herdr-app` and `hc`, so nothing touches a real Herdr session or the network.
 set -uo pipefail
+unset HERDR_ENV HC_TERMINAL_ID  # each run sets the backend it tests; the shell's would skew them
 
 script="$(cd "$(dirname "$0")/.." && pwd -P)/scripts/start-worktree.sh"
 pass=0
@@ -144,6 +145,66 @@ mkdir -p "$main/some/dir"
 run "$main/some/dir" fix/old-git old-git
 check "old git exits 0" '[ "$rc" -eq 0 ]'
 check "old git resolves main clone" 'grep -q -- "--cwd $main --branch fix/old-git" "$log"'
+
+# --- Herdr app backend: herdr-app and hc stubbed, git makes the worktree ---
+
+# setup_app [spaces-json]: stubs on top of setup; no `herdr` calls are expected.
+setup_app() {
+  setup
+  applog="$sandbox/app.log"
+  printf '{"spaces":[%s]}' "${1:-}" > "$sandbox/spaces.json"
+  cat > "$sandbox/bin/herdr-app" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$applog"
+case "\$1 \$2" in
+  "ls ")            cat "$sandbox/spaces.json" ;;
+  "do space.new")   echo '{"space":"spNEW","tab":"tb1","terminal":"t9"}' ;;
+  *)                echo '{"ok":true}' ;;
+esac
+EOF
+  cat > "$sandbox/bin/hc" <<EOF
+#!/usr/bin/env bash
+echo "hc \$*" >> "$applog"
+echo '{"address":"t7","labels":{"herdr.space":"spCALLER"}}'
+EOF
+  chmod +x "$sandbox/bin/herdr-app" "$sandbox/bin/hc"
+}
+
+run_app() { (cd "$1" && shift && PATH="$sandbox/bin:$PATH" HC_TERMINAL_ID=t7 "$script" "$@") >"$sandbox/out" 2>&1; rc=$?; }
+
+# 15. New branch in the app: git makes the worktree, the app shows it as a new space.
+setup_app
+run_app "$main" int3-2-app-thing INT3-2
+check "app new branch exits 0" '[ "$rc" -eq 0 ]'
+check "app new branch worktree at the standard path" '[ -d "$main/.worktrees/int3-2-app-thing" ]'
+check "app new branch is off the base" '[ "$(git -C "$main" rev-parse int3-2-app-thing)" = "$(git -C "$main" rev-parse origin/main)" ]'
+check "app new branch has no upstream" '! git -C "$main" rev-parse --abbrev-ref int3-2-app-thing@{upstream} >/dev/null 2>&1'
+check "app makes a space named after the label" 'grep -q "^do space.new --name INT3-2 --folder $main/.worktrees/int3-2-app-thing$" "$applog"'
+check "app returns the view to the caller space" 'grep -q "^do space.select --id spCALLER$" "$applog"'
+check "app prints the space as workspace_id" 'grep -q "\"workspace_id\": \"spNEW\"" "$sandbox/out"'
+check "app never calls the TUI" '[ ! -e "$log" ]'
+check "app writes the exclude lines" 'grep -qxF ".worktrees/" "$main/.git/info/exclude" && grep -qxF "/.task-brief.md" "$main/.git/info/exclude"'
+
+# 16. A space already shows the worktree: reused, no second space, view untouched.
+setup_app
+git -C "$main" worktree add -q "$main/.worktrees/fix/shown" -b fix/shown 2>/dev/null
+setup_spaces='{"id":"spOLD","name":"shown","folder":"'"$main"'/.worktrees/fix/shown","tabs":[]}'
+printf '{"spaces":[%s]}' "$setup_spaces" > "$sandbox/spaces.json"
+run_app "$main" fix/shown shown
+check "app existing space is reused" '[ "$rc" -eq 0 ] && grep -q "\"workspace_id\": \"spOLD\"" "$sandbox/out"'
+check "app existing space makes no new one" '! grep -q "space.new\|space.select" "$applog"'
+
+# 17. Branch only on the remote, in the app: tracked locally, then shown.
+setup_app
+git -C "$sandbox/seed" push -q origin main:refs/heads/feat/app-remote
+run_app "$main" feat/app-remote app-remote
+check "app remote branch is tracked" '[ "$(git -C "$main" rev-parse --abbrev-ref feat/app-remote@{upstream} 2>/dev/null)" = origin/feat/app-remote ]'
+check "app remote branch gets a space" 'grep -q "^do space.new --name app-remote" "$applog"'
+
+# 18. HERDR_ENV=1 wins when both are set: the TUI is used.
+setup_app
+(cd "$main" && PATH="$sandbox/bin:$PATH" HERDR_ENV=1 HC_TERMINAL_ID=t7 "$script" fix/both both) >"$sandbox/out" 2>&1; rc=$?
+check "TUI wins over the app" '[ "$rc" -eq 0 ] && grep -q "^worktree create" "$log" && [ ! -e "$applog" ]'
 
 echo
 echo "$pass passed, $fail failed"

@@ -1,17 +1,18 @@
 ---
 name: start-task
-description: Use when the user wants to start a new task — a Linear issue, feature, fix, or chore — in its own git worktree and branch opened as a Herdr workspace, with a coding agent there (Claude by default, or Codex, Cursor, or another the user names) that receives the task context. Names the branch from the Linear issue or the task description. Requires running inside Herdr.
+description: Use when the user wants to start a new task — a Linear issue, feature, fix, or chore — in its own git worktree and branch opened as a Herdr workspace, with a coding agent there (Claude by default, or Codex, Cursor, or another the user names) that receives the task context. Names the branch from the Linear issue or the task description. Requires running inside Herdr, the TUI or the app.
 license: MIT
-compatibility: Requires git, Herdr 0.9+, and the chosen agent's CLI on PATH, with the agent running inside a Herdr pane (HERDR_ENV=1). Reading Linear issues requires a Linear MCP connector; without one the branch name is derived from the issue ID and title the user gives.
+compatibility: Requires git, python3, the chosen agent's CLI on PATH, and either Herdr TUI 0.9+ (the agent in a pane, HERDR_ENV=1) or the Herdr app with herdr-app and hc on PATH (the agent in an app terminal, HC_TERMINAL_ID set). Reading Linear issues requires a Linear MCP connector; without one the branch name is derived from the issue ID and title the user gives.
 allowed-tools: Read, Bash
 metadata:
-  version: 0.3.0
+  version: 0.4.0
   branch_from_issue: Linear gitBranchName, verbatim
   branch_without_issue: <type>/<slug>
   worktree_path: <main clone>/.worktrees/<branch>
   base_branch: proposed from origin/HEAD, confirmed by the user
   brief: <worktree>/.task-brief.md, kept out of git through info/exclude
   agent: the kind the user names, else $START_TASK_AGENT, else claude; in the workspace's first pane, prompted to read the brief
+  backends: Herdr TUI (workspace, pane) or Herdr app (space, terminal), detected by the scripts
 ---
 
 # Start task
@@ -20,6 +21,12 @@ Turn the context of a task into a well-named branch, a Herdr workspace hanging o
 the main clone of the current repository, and a coding agent in that workspace that
 already holds the task context. The run is done when that agent has started working
 on the brief; the task itself continues in that session, not this one.
+
+Herdr comes in two kinds, and the scripts detect which one this session runs in:
+**Herdr TUI** (`herdr`, `HERDR_ENV=1`), where the workspace is a Herdr workspace with
+panes, and the **Herdr app** (`herdr-app` over `hc`, `HC_TERMINAL_ID` set), where it
+is a space with terminals. The steps are the same in both; only what step 5 opens and
+step 7 reports differs.
 
 ## 1. Resolve the branch name
 
@@ -86,10 +93,13 @@ the base, adds `.worktrees/` to `.git/info/exclude`, and then:
 - reopens the branch instead when it already exists, locally or on the remote; the
   base does not apply then, and the report says the branch was reopened.
 
-Herdr opens it as a workspace linked to the main clone and leaves the focus where it was.
-Keep the workspace ID from the response (`.result.workspace.workspace_id`) for step 6.
+In Herdr TUI, Herdr opens it as a workspace linked to the main clone. In the app, git
+creates the worktree and the app shows it as a space named after the label, or reuses
+the space already showing that folder. Either way the user's view stays where it was.
+Keep the ID from the response (`.result.workspace.workspace_id`, a workspace in the
+TUI, a space in the app) for step 6.
 
-When Herdr answers with a repository-trust error, show it to the user and ask before
+When Herdr TUI answers with a repository-trust error, show it to the user and ask before
 retrying with `--trust-repository`.
 
 ## 6. Hand the task to the agent
@@ -111,10 +121,12 @@ Then run:
 scripts/start-agent.sh <workspace-id> <label> <worktree>/.task-brief.md <kind>
 ```
 
-The script takes the workspace's first pane. It reuses an idle agent of that kind already
-in the pane, or starts one in the shell, names it after the label, and gives it a one-line
-prompt to read the brief. It returns once the agent takes the prompt up, without
-waiting for the turn to end, and prints the agent with its `agent_status`:
+The script takes the workspace's first pane (the space's first terminal in the app). It
+reuses an idle agent of that kind already there, or starts one in the shell, and gives it
+a one-line prompt to read the brief. In the TUI it also names the agent after the label;
+in the app the space carries the label and the agent is addressed by its terminal (`t9`).
+It returns once the agent takes the prompt up, without waiting for the turn to end, and
+prints the agent with its status (`agent_status` in the TUI, `status.state` in the app):
 
 - `working` or `done`: the agent is on the task.
 - `blocked`: a trust or permission dialog is waiting. The prompt is already queued;
@@ -129,5 +141,5 @@ Give the user:
 
 - branch and base;
 - absolute path of the worktree;
-- Herdr workspace ID, agent kind, and agent name;
+- Herdr kind (TUI or app), workspace or space ID, agent kind, and agent name or terminal;
 - one line on what the brief asked the agent to do.
