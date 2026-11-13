@@ -545,16 +545,17 @@ def decide(cfg, ref, source):
         return "skip", "mergeado", summary
     if pr.get("state") != "open":
         return "skip", "cerrado", summary
-    if pr.get("draft"):
-        return "skip", "draft", summary
     author = login(pr.get("user"))
     if author == me:
         return "skip", "PR propio", summary
     reviews = api_pages(f"repos/{owner}/{repo}/pulls/{number}/reviews")
     mine = my_reviews(reviews, me)
+    # Before draft, so a draft's reason says whether it will be reviewed later.
     if source == "github" and author not in (gh_cfg.get("my_team_authors") or []) \
             and not mine:
         return "skip", "autor fuera de Merchant Services", summary
+    if pr.get("draft"):
+        return "skip", "draft", summary
     if not mine:
         return "review", "primera revisión", summary
     head = (pr.get("head") or {}).get("sha") or ""

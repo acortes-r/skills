@@ -5,7 +5,7 @@ license: MIT
 compatibility: Built for a Claude Code cloud routine. Requires python3, an authenticated GitHub CLI (gh) used over REST only, the review-changes skill installed next to this one, a Slack connector (search, read channel, read thread, send message), and the configured repositories cloned in the session.
 allowed-tools: Read, Grep, Glob, Bash, Skill, Agent
 metadata:
-  version: 0.2.1
+  version: 0.2.2
   writes: my Slack DM (slack.notify_channel) only; GitHub only through review-changes
   modes: dry (lists what it would review) | live (runs review-changes --auto)
   posted_language: es
