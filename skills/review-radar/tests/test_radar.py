@@ -1059,6 +1059,94 @@ def test_lock_unreadable_skips():
           and data["reason"] == "candados ilegibles", data)
 
 
+# --- ping -------------------------------------------------------------------
+
+FAKE_HOOK = "https://hooks.example.test/triggers/T000/F000/secreto-falso"
+PING_CFG = TMP / "ping.yml"
+PING_CFG.write_text(CONFIG + "notify:\n  ping: true\n  ping_env: RADAR_TEST_PING\n",
+                    encoding="utf-8")
+
+
+class FakeResponse:
+    status = 200
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def ping(env=None, answer=None, config=PING_CFG, text="🔔 Review radar · 1 reviews publicados"):
+    """Run `ping` with urlopen stubbed; return (output, captured requests, stdout)."""
+    import os
+    import urllib.error
+    requests = []
+
+    def fake_urlopen(request, timeout=None):
+        requests.append(request)
+        if isinstance(answer, Exception):
+            raise answer
+        return FakeResponse()
+
+    original = mod.urllib.request.urlopen
+    saved = os.environ.pop("RADAR_TEST_PING", None)
+    if env:
+        os.environ["RADAR_TEST_PING"] = env
+    mod.urllib.request.urlopen = fake_urlopen
+    buffer = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(buffer):
+            mod.main(["ping", "--config", str(config), "--text", text])
+    finally:
+        mod.urllib.request.urlopen = original
+        os.environ.pop("RADAR_TEST_PING", None)
+        if saved is not None:
+            os.environ["RADAR_TEST_PING"] = saved
+    return json.loads(buffer.getvalue()), requests, buffer.getvalue()
+
+
+def test_ping_posts_json():
+    data, requests, raw = ping(env=FAKE_HOOK)
+    body = json.loads(requests[0].data.decode("utf-8")) if requests else None
+    check("ping POSTs {mensaje} to the URL in the env var",
+          data["sent"] and len(requests) == 1
+          and requests[0].get_method() == "POST"
+          and requests[0].full_url == FAKE_HOOK
+          and body == {"mensaje": "🔔 Review radar · 1 reviews publicados"}, (data, body))
+    check("ping never prints the URL", "secreto-falso" not in raw, raw)
+
+
+def test_ping_without_env_does_nothing():
+    data, requests, _ = ping(env=None)
+    check("ping without the env var sends nothing and says so",
+          not data["sent"] and not requests
+          and data["reason"] == "RADAR_TEST_PING no definida", data)
+
+
+def test_ping_http_error():
+    import urllib.error
+    error = urllib.error.HTTPError(FAKE_HOOK, 500, "Server Error", {}, None)
+    data, _, raw = ping(env=FAKE_HOOK, answer=error)
+    check("an HTTP error is reported, not raised",
+          not data["sent"] and data["error"] == "HTTP 500", data)
+    check("an HTTP error never prints the URL", "secreto-falso" not in raw, raw)
+
+
+def test_ping_network_error_hides_url():
+    import urllib.error
+    error = urllib.error.URLError(f"no route to {FAKE_HOOK}")
+    data, _, raw = ping(env=FAKE_HOOK, answer=error)
+    check("a network error is reported without the URL",
+          not data["sent"] and "secreto-falso" not in raw and "<url>" in data["error"], data)
+
+
+def test_ping_disabled():
+    data, requests, _ = ping(env=FAKE_HOOK, config=CFG_PATH)
+    check("no notify.ping in config → no ping",
+          not data["sent"] and not requests and data["reason"] == "ping desactivado", data)
+
+
 def main():
     print("radar.py")
     for name, test in sorted(globals().items()):

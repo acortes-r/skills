@@ -101,3 +101,29 @@ it would have had in `📬`.
 ```
 
 No open PRs: `📋 Tus PRs abiertos (0)` alone.
+
+## 🔔 Ping
+
+Not a DM line: `radar.py ping` sends it through the `notify.ping_env` webhook,
+from another sender, so Slack notifies me. Only after a run that sent
+something to the DM. One line, plain text; `<link>` is the start message's
+link that the send returned (left out, with its `· `, when the send returned
+none).
+
+| Run | Line |
+|---|---|
+| digest went out | `🔔 Tus PRs abiertos (<n>) · <x> reviews publicados · <m> cambios en tus PRs · <link>` |
+| `run.mode: dry` | `🔔 Review radar (prueba) · reviso <R> · omito <O> · <link>` |
+| `run.mode: live` | `🔔 Review radar · <n> reviews publicados · <m> cambios en tus PRs · <link>` |
+
+- Digest: `<n>` as in `digest.title`, `x` the published reviews, `m` the PRs
+  marked `🆕`. It replaces the other two lines, in either mode.
+- Dry: `R` and `O` as in the start message.
+- Live: `n` counts the `✅`, `💬`, and `📝` lines; `m` the PRs in `📬`.
+- Every count in zero is left out, with its `· `:
+  `🔔 Review radar · 2 reviews publicados · <link>`,
+  `🔔 Tus PRs abiertos (5) · <link>`, or `🔔 Review radar · <link>` when the
+  run only skipped or failed.
+
+A failed ping is one more reply at the end of the thread:
+`⚠️ ping falló: <error>`.
