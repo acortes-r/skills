@@ -17,7 +17,12 @@ requests are read-only.
    - **Schedule:** `7 9-18 * * 1-5` in `America/Merida` (match `schedule` in
      `config.yml`; the window is computed from it).
    - **GitHub event:** pull request events on the configured repositories.
-3. Leave `run.mode: dry` for the first days: it lists what it would review
+3. For the ping (`notify.ping`), create a Slack workflow with a webhook trigger
+   that takes one text variable, `mensaje`, and sends it to me. Put its URL in
+   the routine environment's `SLACK_PING_WEBHOOK` (the `notify.ping_env` name),
+   and allow its host (`hooks.slack.com`) in the environment's network access.
+   Without the variable, runs work as before and skip the ping.
+4. Leave `run.mode: dry` for the first days: it lists what it would review
    without calling `review-changes`. Switch to `live` once the list looks right.
 
 ## Configuration
@@ -34,7 +39,10 @@ mode, and the my-PRs options.
 | Pull request event | that PR only: candidate check → gate → review |
 
 A run with nothing to review, no new activity on my PRs, and no digest due sends
-nothing.
+nothing. A run that sent something ends with a **ping**: one line from a Slack
+workflow webhook, so Slack notifies me (messages the connector sends to my own
+DM do not). It links to the run's thread; a failed ping is noted at the end of
+the thread and never fails the run.
 
 The **window** starts at the scheduled slot before this run, with no stored
 state: Monday 9:07 covers from Friday 18:07, and a "Run now" at 20:00 covers

@@ -12,6 +12,9 @@ slack:
     S0C022VG8MT: merchant-services
   include_dms: true
   notify_channel: U0774V5HCJF    # DM conmigo
+notify:
+  ping: true                     # aviso extra con notificación al final
+  ping_env: SLACK_PING_WEBHOOK   # variable de entorno con la URL
 schedule:
   tz: America/Merida
   days: [1, 2, 3, 4, 5]          # lunes a viernes

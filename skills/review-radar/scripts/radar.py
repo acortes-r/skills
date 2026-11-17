@@ -18,11 +18,14 @@ import datetime as dt
 import decimal
 import importlib.util
 import json
+import os
 import pathlib
 import re
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 
 HERE = pathlib.Path(__file__).resolve().parent
 POST_REVIEW = HERE.parent.parent / "review-changes" / "scripts" / "post_review.py"
@@ -1033,6 +1036,45 @@ def cmd_lock(args):
     show(out)
 
 
+# --- ping -------------------------------------------------------------------
+# One extra message from another sender (a Slack workflow webhook), so Slack
+# notifies me. The URL lives in an environment variable and is never printed.
+
+PING_ENV = "SLACK_PING_WEBHOOK"
+PING_TIMEOUT = 15
+
+
+def send_ping(url, text):
+    body = json.dumps({"mensaje": text}, ensure_ascii=False).encode("utf-8")
+    request = urllib.request.Request(
+        url, data=body, method="POST",
+        headers={"Content-Type": "application/json; charset=utf-8"})
+    with urllib.request.urlopen(request, timeout=PING_TIMEOUT) as response:
+        return response.status
+
+
+def cmd_ping(args):
+    cfg = load_config(args.config)
+    notify = cfg.get("notify") or {}
+    env = notify.get("ping_env") or PING_ENV
+    out = {"sent": False}
+    if not notify.get("ping"):
+        out["reason"] = "ping desactivado"
+    elif not os.environ.get(env):
+        out["reason"] = f"{env} no definida"
+    else:
+        url = os.environ[env]
+        try:
+            out["status"] = send_ping(url, args.text)
+            out["sent"] = True
+        except urllib.error.HTTPError as err:
+            out["error"] = f"HTTP {err.code}"
+        except (urllib.error.URLError, OSError, ValueError) as err:
+            reason = getattr(err, "reason", err)
+            out["error"] = str(reason).replace(url, "<url>")
+    show(out)
+
+
 # --- CLI --------------------------------------------------------------------
 
 
@@ -1071,6 +1113,11 @@ def main(argv=None):
     p.add_argument("--mine", help="ts of my own 🔒 line")
     p.add_argument("--now")
     p.set_defaults(run=cmd_lock)
+
+    p = sub.add_parser("ping")
+    p.add_argument("--config", required=True)
+    p.add_argument("--text", required=True)
+    p.set_defaults(run=cmd_ping)
 
     args = parser.parse_args(argv)
     args.run(args)

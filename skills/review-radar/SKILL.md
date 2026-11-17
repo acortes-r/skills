@@ -5,8 +5,8 @@ license: MIT
 compatibility: Built for a Claude Code cloud routine. Requires python3, an authenticated GitHub CLI (gh) used over REST only, the review-changes skill installed next to this one, a Slack connector (search, read channel, read thread, send message), and the configured repositories cloned in the session.
 allowed-tools: Read, Grep, Glob, Bash, Skill, Agent
 metadata:
-  version: 0.2.2
-  writes: my Slack DM (slack.notify_channel) only; GitHub only through review-changes
+  version: 0.3.0
+  writes: my Slack DM (slack.notify_channel), plus one ping through the notify.ping_env webhook; GitHub only through review-changes
   modes: dry (lists what it would review) | live (runs review-changes --auto)
   posted_language: es
 ---
@@ -34,7 +34,8 @@ R="python3 <skill dir>/scripts/radar.py"; C="--config <skill dir>/config.yml"
 - GitHub receives writes only from `review-changes`. Everything about my own
   pull requests is read-only.
 - Slack receives writes only in `slack.notify_channel`: the start message and
-  replies in its own thread.
+  replies in its own thread. The only other write is the step 8 ping, through
+  `radar.py ping`; the webhook URL is never read, printed, or passed by hand.
 - Every person and group in those messages is plain text that notifies no one:
   `Carlos Castro`, a GitHub login, `@core`, `@merchant-services`. The DM never
   carries `<@U…>` or `<!subteam^…>`.
@@ -100,8 +101,9 @@ three hold:
 
 ### 5. Start message
 
-Send the start message to `notify_channel` and keep its `ts`: every later
-message is a reply in its thread. Formats for this and every line below:
+Send the start message to `notify_channel` and keep its `ts` and the message
+link the send returns: every later message is a reply in its thread, and the
+link goes in the step 8 ping. Formats for this and every line below:
 [reference/messages.md](reference/messages.md).
 
 ### 6. Reviews
@@ -152,6 +154,17 @@ One more reply in the thread, only when it has content:
 Errors that `candidates` or `my-prs` returned in `errors` go at the end of the
 reply they belong to, one `⚠️` line each.
 
+### 8. Ping
+
+When `notify.ping` holds and the run sent anything to the DM, build the ping
+line ([reference/messages.md](reference/messages.md#-ping)) and run
+`$R ping $C --text "<line>"`. A run that sent nothing pings nothing.
+
+- `sent: true`, or `reason` (ping off, variable missing): done, nothing more.
+- `error`: one last reply in the thread, `⚠️ ping falló: <error>`. The run
+  still ends normally.
+
 The run is done when every gated PR has exactly one final line in the thread,
 every `🔒` it posted has a later line with the same token, and every
-`has_events` PR has its line in `📬` or `📋`.
+`has_events` PR has its line in `📬` or `📋`, and a run that wrote to the DM
+has run `ping`.
