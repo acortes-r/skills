@@ -68,17 +68,19 @@ BLOCKED = ("gh: GitHub GraphQL is not available from Claude Code sessions; "
 
 
 def run(argv, comments=None, reviews=None, sent=None, threads=None,
-        graphql="ok", review_threads=None, ccr=None, sub=None):
+        graphql="ok", review_threads=None, ccr=None, sub=None, user="ok"):
     """Run main() with a stubbed gh. Returns everything it printed.
 
     `graphql` is "ok", "blocked" (the cloud-session 403), or "error". `ccr` is
-    the `ccr/review_threads` answer; None makes that route fail.
+    the `ccr/review_threads` answer; None makes that route fail. `gh auth
+    status` always fails, as in a cloud session; `user="fails"` makes
+    `gh api user` fail too.
     """
     sent = sent if sent is not None else []
 
     def fake_gh(args, stdin=None):
         if args[:2] == ["auth", "status"]:
-            return ""
+            raise RuntimeError("The token in GH_TOKEN is invalid.")
         if args[:2] == ["api", "graphql"]:
             if graphql == "blocked":
                 raise RuntimeError(BLOCKED)
@@ -94,6 +96,8 @@ def run(argv, comments=None, reviews=None, sent=None, threads=None,
                 return "{}"
             return json.dumps({"data": {"node": (threads or {}).get(thread_id)}})
         if args[:2] == ["api", "user"]:
+            if user == "fails":
+                raise RuntimeError("gh: Bad credentials (HTTP 401)")
             return "revisora-ficticia\n"
         if args[0] != "api":
             raise AssertionError(f"unexpected gh call: {args!r}")
@@ -464,6 +468,32 @@ def without_login(argv, reviews):
         return run(argv, reviews=reviews, sent=sent), sent
     finally:
         mod.viewer_login = original
+
+
+# --- authentication ------------------------------------------------------
+
+def test_publishes_when_auth_status_fails_but_api_works():
+    """Cloud sessions: `gh auth status` says invalid, `gh api user` answers."""
+    findings = write("f_auth.json", [{"path": "app/models/user.rb", "line": 51,
+                                      "body": "🔵 Extrae el timeout a constante."}])
+    sent = []
+    out = run(["--findings", findings], sent=sent)
+    check("a failing `gh auth status` does not stop a review when `gh api user` works",
+          "published as COMMENT" in out and len(sent) == 1, out)
+    sent = []
+    out = run(["--approve"], sent=sent)
+    check("a failing `gh auth status` does not stop an approval when `gh api user` works",
+          "published as APPROVE" in out and len(sent) == 1, out)
+
+
+def test_aborts_when_api_user_fails():
+    findings = write("f_auth2.json", [{"path": "app/models/user.rb", "line": 51,
+                                       "body": "🔵 Extrae el timeout a constante."}])
+    for argv, kind in ((["--findings", findings], "review"), (["--approve"], "approval")):
+        sent = []
+        out = run(argv, sent=sent, user="fails")
+        check(f"a failing `gh api user` stops the {kind} with the auth message",
+              "EXIT 1" in out and "gh is not authenticated" in out and not sent, out)
 
 
 def test_unknown_login_sends_nothing():
