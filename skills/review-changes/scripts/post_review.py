@@ -332,6 +332,18 @@ def viewer_login():
         return ""
 
 
+def authenticated_login():
+    """Our login, read with a real API call; fatal when it cannot be read.
+
+    Not `gh auth status`: in cloud sessions gh talks through a proxy token,
+    `gh api` works, and `gh auth status` still calls the token invalid.
+    """
+    login = viewer_login()
+    if not login:
+        fail("gh is not authenticated: `gh api user` failed. Run: gh auth login")
+    return login
+
+
 def our_reviews(repo, pr, login):
     """Reviews this account already left on the PR.
 
@@ -728,13 +740,9 @@ def run_approve(args):
         fail("--approve refuses a partial round: reduced coverage is approved "
              "by a human, not by this script.")
 
-    try:
-        gh(["auth", "status"])
-    except RuntimeError:
-        fail("gh is not authenticated. Run: gh auth login")
+    login = authenticated_login()
 
     sha = head_sha(args.repo, args.pr)
-    login = viewer_login()
     reviews = our_reviews(args.repo, args.pr, login)
 
     if already_approved(reviews, sha):
@@ -879,10 +887,7 @@ def main():
     summary = load_summary(args.summary)
     resolve = load_array(args.resolve, "resolve")
 
-    try:
-        gh(["auth", "status"])
-    except RuntimeError:
-        fail("gh is not authenticated. Run: gh auth login")
+    login = authenticated_login()
 
     targets = set()
     if findings:
@@ -902,7 +907,6 @@ def main():
     skipped += skipped_replies
 
     sha = head_sha(args.repo, args.pr)
-    login = viewer_login()
     reviews = our_reviews(args.repo, args.pr, login)
     number = next_round(reviews)
     threads = resolvable_threads(args.repo, args.pr, resolve, login)
