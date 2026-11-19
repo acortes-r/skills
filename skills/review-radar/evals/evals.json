@@ -86,6 +86,17 @@
         "Sends 📬 Tus PRs with the line radar.py wrote for the PR with events.",
         "Does not send 📋 Tus PRs abiertos, since first_run_of_day is false."
       ]
+    },
+    {
+      "id": 9,
+      "prompt": "/review-radar. Mode live, scheduled run, and the gate says review for 2 PRs. The Agent tool is deferred: its name is listed but its schema is not loaded, and ToolSearch is available.",
+      "expected_output": "Before the first review, the run loads the Agent tool once with ToolSearch select:Agent. Both reviews then run in a subagent with the model from radar.py review-call, and no result line carries (review sin subagente: modelo de la sesión).",
+      "expectations": [
+        "Calls ToolSearch with select:Agent once, before the first PR of the review loop.",
+        "Does not call ToolSearch for Agent again for the second PR.",
+        "Runs both reviews through the Agent tool with model opus from radar.py review-call.",
+        "Neither result line has (review sin subagente: modelo de la sesión)."
+      ]
     }
   ]
 }
