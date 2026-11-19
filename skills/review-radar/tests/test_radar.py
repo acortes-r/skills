@@ -317,6 +317,19 @@ def test_since_every_two_hours_monday():
           and data["first_run_of_day"] is True, data)
 
 
+def test_since_prints_the_start_line():
+    data = since_at("2026-03-10T16:07:10Z")  # 10:07 in Merida, mode dry
+    check("since prints the start message's first line with the local hour",
+          data["now_local"] == "10:07"
+          and data["start_line"] == "🔎 Review radar · 10:07 · modo prueba", data)
+    path = TMP / "config-live.yml"
+    path.write_text(CONFIG.replace("mode: dry", "mode: live"))
+    data, _, _ = run(["since", "--config", str(path), "--now",
+                      "2026-03-10T13:07:10-06:00"], {})
+    check("live mode has no modo prueba",
+          data["start_line"] == "🔎 Review radar · 13:07", data)
+
+
 def test_since_accepts_utc():
     data = since_at("2026-03-10T16:07:10Z")  # 10:07 in Merida
     check("--now in UTC is converted to the schedule's zone",
@@ -641,6 +654,10 @@ def test_gate_ignores_thread_replies():
                                                commit=HEAD, body="")]))
     check("a change request with no body is a real review",
           data["reason"] == f"ya revisado en {HEAD[:7]}", data)
+    check("ya revisado names only the sha, never the PR label",
+          data["line"] == "⏭️ <https://github.com/acme/tienda-pagos/pull/7|pagos#7>"
+          f" · colega-uno · omitido: ya revisado en {HEAD[:7]}"
+          and "#" not in data["reason"], data)
 
 
 def test_gate_uses_latest_review():

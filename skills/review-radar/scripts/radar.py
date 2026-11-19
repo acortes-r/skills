@@ -251,9 +251,12 @@ def cmd_since(args):
     tz = zone(cfg["schedule"]["tz"])
     now = parse_time(args.now, tz) if args.now else dt.datetime.now(dt.timezone.utc)
     since, first, slot = compute_since(now, cfg["schedule"])
+    local = now.astimezone(tz).strftime("%H:%M")
+    dry = (cfg.get("run") or {}).get("mode", "dry") == "dry"
     show({"since": since.isoformat(), "first_run_of_day": first,
-          "scheduled": slot is not None,
-          "now_local": now.astimezone(tz).strftime("%H:%M")})
+          "scheduled": slot is not None, "now_local": local,
+          # The start message's first line, sent as is: the hour is this run's.
+          "start_line": f"🔎 Review radar · {local}" + (" · modo prueba" if dry else "")})
 
 
 # --- GitHub over REST -------------------------------------------------------

@@ -10,12 +10,14 @@ login. Names are plain text, never `<@…>` or `<!subteam^…>`.
 ## Start message
 
 ```
-🔎 Review radar · <now_local> [· modo prueba]
+<start_line>
 Busqué en GitHub (<github.me>, @<request_teams>) y Slack (@<group names>, DMs)
 <N> PRs encontrados · reviso <R> · omito <O>
 ```
 
-- `· modo prueba` when `run.mode` is `dry`.
+- `<start_line>` is what `radar.py since` prints in `start_line`, as is:
+  `🔎 Review radar · <HH:MM local> [· modo prueba]`, with `· modo prueba` when
+  `run.mode` is `dry`. Never write the hour yourself.
 - Group names come from `slack.team_group_names`; a group without a name is
   written as its ID. `, DMs` only when `include_dms`.
 - `N` candidates, `R` with gate `review`, `O` the rest (skip and error). In live

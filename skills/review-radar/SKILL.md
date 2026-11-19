@@ -5,7 +5,7 @@ license: MIT
 compatibility: Built for a Claude Code cloud routine. Requires python3, an authenticated GitHub CLI (gh) used over REST only, the review-changes skill installed next to this one, a Slack connector (search, read channel, read thread, send message), and the configured repositories cloned in the session.
 allowed-tools: Read, Grep, Glob, Bash, Skill, Agent, ToolSearch
 metadata:
-  version: 0.4.3
+  version: 0.4.4
   writes: my Slack DM (slack.notify_channel), plus one ping through the notify.ping_env webhook; GitHub only through review-changes
   modes: dry (lists what it would review) | live (runs review-changes --auto)
   posted_language: es
@@ -69,7 +69,7 @@ message. No send tool: print the messages in the session output and stop.
 ### 1. Window and trigger
 
 Read `config.yml`. Run `$R since $C`; keep `since`, `first_run_of_day`, and
-`now_local`.
+`start_line`.
 
 The run is an **event run** when the routine's prompt carries a GitHub
 `pull_request` event (a payload with `pull_request` and `repository`, or the
@@ -112,7 +112,8 @@ three hold:
 
 ### 5. Start message
 
-Send the start message to `notify_channel` and keep its `ts` and the message
+Send the start message to `notify_channel`; its first line is `since`'s
+`start_line`, as printed (never an hour of your own). Keep its `ts` and the message
 link the send returns: every later message is a reply in its thread, and the
 link goes in the step 8 ping. Formats for this and every line below:
 [reference/messages.md](reference/messages.md).
