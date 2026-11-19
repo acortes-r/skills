@@ -3,7 +3,8 @@
 Every message goes to `slack.notify_channel`, sent with
 `unfurl_app_links: false` so GitHub links get no previews. A PR is always the
 `link` that `radar.py` prints, `<https://github.com/<org>/<repo>/pull/<n>|<label>#<n>>`
-(`platform-purchase` → `purchase`), in every section. People are their GitHub
+(`github.repo_labels` first, else what follows the last hyphen:
+`platform-purchase` → `purchase`), in every section. People are their GitHub
 login. Names are plain text, never `<@…>` or `<!subteam^…>`.
 
 ## Start message

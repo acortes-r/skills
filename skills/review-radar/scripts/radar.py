@@ -148,6 +148,10 @@ def parse_block(lines, index, indent):
     return out, index
 
 
+# github.repo_labels from the loaded config: repo -> short name.
+REPO_LABELS = {}
+
+
 def load_config(path):
     try:
         text = pathlib.Path(path).read_text(encoding="utf-8")
@@ -162,6 +166,19 @@ def load_config(path):
                          ("schedule", "hours"), ("schedule", "minute")):
         if (cfg.get(section) or {}).get(key) in (None, "", []):
             fail(f"{path}: missing {section}.{key}")
+    gh_cfg = cfg["github"]
+    labels = gh_cfg.get("repo_labels") or {}
+    if not isinstance(labels, dict):
+        fail(f"{path}: github.repo_labels must be a map of repo: label")
+    REPO_LABELS.clear()
+    REPO_LABELS.update({str(k): str(v) for k, v in labels.items()})
+    seen = {}
+    for repo in gh_cfg["repos"]:
+        short = label(repo)
+        if short in seen:
+            fail(f"{path}: {seen[short]} and {repo} both get the label {short!r};"
+                 " give one of them its own in github.repo_labels")
+        seen[short] = repo
     return cfg
 
 
@@ -334,8 +351,9 @@ def is_bot(user):
 
 
 def label(repo):
-    """Short repo name for messages: platform-purchase -> purchase."""
-    return repo.rsplit("-", 1)[-1]
+    """Short repo name for messages: github.repo_labels first, else what
+    follows the last hyphen (platform-purchase -> purchase)."""
+    return REPO_LABELS.get(repo) or repo.rsplit("-", 1)[-1]
 
 
 PR_REF = re.compile(r"^([\w.-]+)/([\w.-]+)#(\d+)$")

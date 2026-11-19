@@ -199,6 +199,58 @@ def test_config_subset_parses():
           cfg)
 
 
+def config_with(repos, labels=None):
+    """A copy of CONFIG with other repos and, optionally, repo_labels."""
+    text = CONFIG.replace("  repos: [tienda-pagos, tienda-web]\n",
+                          f"  repos: [{', '.join(repos)}]\n")
+    if labels:
+        text = text.replace("  request_teams:", "  repo_labels:\n" + "".join(
+            f"    {repo}: {short}\n" for repo, short in labels.items())
+            + "  request_teams:")
+    path = TMP / "config-labels.yml"
+    path.write_text(text)
+    return path
+
+
+def load_quietly(path):
+    """(cfg or None, stderr) of load_config, which exits on a bad config."""
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        try:
+            return mod.load_config(str(path)), err.getvalue()
+        except SystemExit:
+            return None, err.getvalue()
+
+
+def test_repo_labels():
+    cfg, _ = load_quietly(config_with(["tienda-pagos", "js-api-client", "mostrador"],
+                                      {"js-api-client": "js-cliente"}))
+    try:
+        check("repo_labels wins, else what follows the last hyphen, else the name",
+              cfg is not None and [mod.label(r) for r in cfg["github"]["repos"]]
+              == ["pagos", "js-cliente", "mostrador"], cfg)
+        check("a link uses the configured label",
+              mod.slack_link("acme", "js-api-client", 4)
+              == "<https://github.com/acme/js-api-client/pull/4|js-cliente#4>")
+    finally:
+        mod.load_config(str(CFG_PATH))
+
+
+def test_repo_label_collision_fails():
+    cfg, err = load_quietly(config_with(["tienda-web", "pagos-web"]))
+    check("two repos with the same label stop the load, naming both",
+          cfg is None and "tienda-web" in err and "pagos-web" in err
+          and "'web'" in err, err)
+    cfg, err = load_quietly(config_with(["tienda-web", "pagos-web"],
+                                        {"pagos-web": "pagos-web"}))
+    check("a repo_labels entry resolves the collision", cfg is not None, err)
+    cfg, err = load_quietly(config_with(["tienda-web", "pagos-web"],
+                                        {"pagos-web": "web"}))
+    check("a repo_label that repeats another repo's label also fails",
+          cfg is None and "tienda-web" in err and "pagos-web" in err, err)
+    mod.load_config(str(CFG_PATH))
+
+
 # --- since ------------------------------------------------------------------
 
 
