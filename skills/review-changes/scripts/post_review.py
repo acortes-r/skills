@@ -9,7 +9,12 @@ Invariants enforced here rather than left to the caller:
   * --approve carries only 🔵 findings, and no pending threads. A 🔴, a 🟠, or
     a pending thread is refused, so an approval can never go out alongside
     something that contradicts it. With nothing at all to say it carries no
-    body either.
+    body either, except with --auto, where it always carries its round line.
+  * --approve reads the PR itself and refuses while anyone's review thread is
+    open and not outdated, while a person's latest verdict is
+    CHANGES_REQUESTED, or while thread resolution is unknown. `blockers`
+    prints the `pendientes` lines for the summary-only round that goes out
+    instead.
   * The same head commit is never approved twice, and never gets two round
     summaries.
   * Every review body opens with its round and the head commit it reviewed,
@@ -30,7 +35,7 @@ Usage:
     post_review.py --repo owner/name --pr 123 \
         [--findings findings.json] [--replies replies.json] \
         [--summary summary.json] [--resolve resolve.json] [--dry-run]
-    post_review.py --repo owner/name --pr 123 --approve \
+    post_review.py --repo owner/name --pr 123 --approve [--auto] \
         [--notes notes.json | --findings findings.json] [--replies replies.json] \
         [--summary summary.json] [--resolve resolve.json]
 
@@ -65,6 +70,7 @@ Claude Code cloud sessions, where GraphQL answers 403:
     post_review.py pr --repo owner/name --pr 123       # metadata and file names
     post_review.py diff --repo owner/name --pr 123     # the unified diff
     post_review.py threads --repo owner/name --pr 123  # threads, reviews, PR comments
+    post_review.py blockers --repo owner/name --pr 123 # what withholds an approval
 `threads` tries GraphQL, takes the CCR route (`ccr/review_threads`) when the
 session refuses GraphQL, and falls back to REST comments with resolution
 unknown. A thread read through CCR has the id `comment:<root comment id>`, and
@@ -344,7 +350,15 @@ def authenticated_login():
     return login
 
 
-def our_reviews(repo, pr, login):
+def all_reviews(repo, pr):
+    """Every review on the PR, by anyone. Fatal when unreadable."""
+    try:
+        return gh_pages(f"repos/{repo}/pulls/{pr}/reviews")
+    except RuntimeError as err:
+        fail(f"could not read existing reviews ({err}). Nothing sent.")
+
+
+def our_reviews(repo, pr, login, reviews=None):
     """Reviews this account already left on the PR.
 
     Fatal when unreadable, and fatal without our login: without them the round
@@ -353,10 +367,8 @@ def our_reviews(repo, pr, login):
     """
     if not login:
         fail("could not read the login this run publishes as. Nothing sent.")
-    try:
-        reviews = gh_pages(f"repos/{repo}/pulls/{pr}/reviews")
-    except RuntimeError as err:
-        fail(f"could not read existing reviews ({err}). Nothing sent.")
+    if reviews is None:
+        reviews = all_reviews(repo, pr)
     return [item for item in reviews
             if (item.get("user") or {}).get("login") == login]
 
@@ -408,7 +420,8 @@ def anchor(path, line):
     return f"`{path}:{line}`" if line is not None else f"`{path}`"
 
 
-def round_body(number, new_lines, summary, notes=None, approving=False, sha=""):
+def round_body(number, new_lines, summary, notes=None, approving=False, sha="",
+               auto=False):
     """The round's review body, or "" when an approval has nothing to say.
 
     The heading names the head commit reviewed, short and bare so GitHub links
@@ -416,10 +429,13 @@ def round_body(number, new_lines, summary, notes=None, approving=False, sha=""):
 
     Sections with nothing in them are left out. An approval with nothing new,
     nothing resolved and no notes goes in bare: the green check already says
-    the code was reviewed.
+    the code was reviewed. Under --auto it never does: `Ronda N (sha). Sin
+    comentarios nuevos.` at least, so an unattended approval shows it was a
+    round of this skill.
     """
     resolved, pending = summary["resueltos"], summary["pendientes"]
-    if approving and not new_lines and not resolved and not notes:
+    bare = approving and not new_lines and not resolved and not notes
+    if bare and not auto:
         return ""
 
     qualifiers = [sha[:7]] if sha else []
@@ -435,7 +451,7 @@ def round_body(number, new_lines, summary, notes=None, approving=False, sha=""):
     elif new_lines:
         plural = "comentarios nuevos" if len(new_lines) != 1 else "comentario nuevo"
         status = f"{len(new_lines)} {plural}, ninguno bloquea el merge."
-    elif resolved or pending:
+    elif resolved or pending or bare:
         status = "Sin comentarios nuevos."
     else:
         status = "Sin comentarios."
@@ -719,6 +735,79 @@ def send_review(args, payload, label):
     return json.loads(response or "{}").get("html_url", "")
 
 
+# --- what withholds an approval -------------------------------------------
+
+
+def is_bot_login(login, kind=None):
+    return kind == "Bot" or (login or "").endswith("[bot]")
+
+
+def author_line(author, links):
+    """One `pendientes` line: an author and the links to what they left open."""
+    return f"`{author}`: " + ", ".join(links)
+
+
+def approval_blockers(repo, pr, reviews):
+    """What withholds an approval, read from the PR itself.
+
+    {"resolution": "known"|"unknown", "openThreads": n, "changesRequested":
+    [logins], "pendientes": [lines]}. Open means not resolved and not outdated,
+    whoever opened it, person or bot. A person's latest APPROVED,
+    CHANGES_REQUESTED, or DISMISSED decides their verdict; a bot's never does.
+    `pendientes` groups open threads by the author who opened them, with links,
+    plus one line per person whose verdict is CHANGES_REQUESTED.
+    """
+    source, threads = read_threads(repo, pr)
+    out = {"resolution": "unknown" if source == "rest" else "known",
+           "openThreads": 0, "changesRequested": [], "pendientes": []}
+    if out["resolution"] == "unknown":
+        out["pendientes"].append("No se pudo leer si los hilos de review están "
+                                 "resueltos; la aprobación queda para una persona.")
+    else:
+        by_author = {}
+        for item in threads:
+            if item.get("isResolved") or item.get("isOutdated"):
+                continue
+            root = (item.get("comments") or [{}])[0]
+            where = anchor(item.get("path"), item.get("line"))
+            link = f"{where} ({root['url']})" if root.get("url") else where
+            by_author.setdefault(root.get("author") or "?", []).append(link)
+            out["openThreads"] += 1
+        for author, links in sorted(by_author.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+            out["pendientes"].append(author_line(author, links))
+    verdicts = {}
+    for review in sorted(reviews, key=lambda r: r.get("submitted_at") or ""):
+        user = review.get("user") or {}
+        if is_bot_login(user.get("login"), user.get("type")):
+            continue
+        if review.get("state") in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED"):
+            verdicts[user.get("login")] = review
+    for who, review in sorted(verdicts.items()):
+        if review.get("state") == "CHANGES_REQUESTED":
+            out["changesRequested"].append(who)
+            link = review.get("html_url")
+            out["pendientes"].append(f"`{who}` pidió cambios"
+                                     + (f" ({link})" if link else ""))
+    return out
+
+
+def refuse_blocked_approval(blockers):
+    """Fail with every reason an approval cannot go out, and the pendientes."""
+    reasons = []
+    if blockers["resolution"] == "unknown":
+        reasons.append("thread resolution is unknown (REST without state)")
+    if blockers["openThreads"]:
+        reasons.append(f"{blockers['openThreads']} review thread(s) are open and "
+                       "not outdated")
+    if blockers["changesRequested"]:
+        reasons.append("the latest review of " + ", ".join(blockers["changesRequested"])
+                       + " is CHANGES_REQUESTED")
+    if reasons:
+        fail("--approve refuses: " + "; ".join(reasons) + ". Send a summary-only "
+             "round with these under pendientes:\n"
+             + json.dumps({"pendientes": blockers["pendientes"]}, ensure_ascii=False))
+
+
 def run_approve(args):
     """Approve a pull request the caller has already decided is approvable.
 
@@ -743,12 +832,18 @@ def run_approve(args):
     login = authenticated_login()
 
     sha = head_sha(args.repo, args.pr)
-    reviews = our_reviews(args.repo, args.pr, login)
+    everyone = all_reviews(args.repo, args.pr)
+    reviews = our_reviews(args.repo, args.pr, login, everyone)
 
     if already_approved(reviews, sha):
         print(f"post_review: PR #{args.pr} is already approved at "
               f"{sha[:7] or 'its head commit'}. Nothing sent.")
         return
+
+    try:
+        refuse_blocked_approval(approval_blockers(args.repo, args.pr, everyone))
+    except RuntimeError as err:
+        fail(f"--approve refuses: could not read the PR's threads ({err}).")
 
     inline, new_lines, pending_replies = [], [], []
     if findings or replies:
@@ -766,7 +861,7 @@ def run_approve(args):
     number = next_round(reviews)
     payload = {"event": APPROVE_EVENT}
     body = round_body(number, new_lines, summary, notes=notes, approving=True,
-                      sha=sha)
+                      sha=sha, auto=args.auto)
     if body:
         payload["body"] = body
     if inline:
@@ -831,6 +926,9 @@ def read_command(name, argv):
                   "headSha": (data.get("head") or {}).get("sha"),
                   "url": data.get("html_url"),
                   "files": [f.get("filename") for f in files]})
+        elif name == "blockers":
+            show(approval_blockers(args.repo, args.pr,
+                                   gh_pages(f"repos/{args.repo}/pulls/{args.pr}/reviews")))
         else:
             source, threads = read_threads(args.repo, args.pr)
             reviews = gh_pages(f"repos/{args.repo}/pulls/{args.pr}/reviews")
@@ -849,7 +947,7 @@ def read_command(name, argv):
         fail(f"could not read {name} for PR #{args.pr} in {args.repo}: {err}")
 
 
-READ_COMMANDS = ("pr", "diff", "threads")
+READ_COMMANDS = ("pr", "diff", "threads", "blockers")
 
 
 def main():
@@ -866,6 +964,8 @@ def main():
     parser.add_argument("--resolve", help="JSON array of review-thread ids")
     parser.add_argument("--approve", action="store_true",
                         help="approve a diff the caller found approvable")
+    parser.add_argument("--auto", action="store_true",
+                        help="unattended run: an approval always carries its round line")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
