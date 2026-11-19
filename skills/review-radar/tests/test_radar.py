@@ -1320,6 +1320,30 @@ def test_review_call_passes_review_model():
           data.get("inline_note") == "(review sin subagente: modelo de la sesión)", data)
 
 
+def test_review_call_reads_review_changes_by_path():
+    url = "https://github.com/acme/tienda-pagos/pull/7"
+    data, code, _ = run(cfg_args("review-call", "--url", url, "--dir", "/x"), {})
+    prompt = (data.get("agent") or {}).get("prompt", "")
+    skill = RADAR.resolve().parent.parent.parent / "review-changes" / "SKILL.md"
+    check("the prompt names review-changes/SKILL.md by its absolute, existing path",
+          code == 0 and skill.is_file() and f"Read `{skill}` and follow it exactly"
+          in prompt and data.get("skill_path") == str(skill), prompt)
+    check("the prompt never sends the review through the Skill tool",
+          "Do not use the Skill tool" in prompt and "Invoke" not in prompt
+          and "invoke" not in prompt, prompt)
+    original = mod.REVIEW_CHANGES_SKILL
+    mod.REVIEW_CHANGES_SKILL = TMP / "no-existe" / "SKILL.md"
+    err = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(err):
+            data, code, _ = run(cfg_args("review-call", "--url", url, "--dir", "/x"), {})
+    finally:
+        mod.REVIEW_CHANGES_SKILL = original
+    check("a missing review-changes/SKILL.md fails with a clear error",
+          code == 1 and "no-existe" in err.getvalue()
+          and "does not exist" in err.getvalue(), err.getvalue())
+
+
 def test_review_model_is_checked():
     path = TMP / "config-model.yml"
     path.write_text(CONFIG.replace("review_model: opus", "review_model: gpt"))

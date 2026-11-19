@@ -30,6 +30,9 @@ import urllib.request
 
 HERE = pathlib.Path(__file__).resolve().parent
 POST_REVIEW = HERE.parent.parent / "review-changes" / "scripts" / "post_review.py"
+# The routine clones the skills as plain files; the Skill tool does not know
+# them. A review reads this file and follows it.
+REVIEW_CHANGES_SKILL = HERE.parent.parent / "review-changes" / "SKILL.md"
 
 # A run this close after a scheduled slot is that slot's run, even if the
 # routine fired late; its window starts at the slot before.
@@ -1107,21 +1110,29 @@ def cmd_lock(args):
 # The routine runs on a cheaper model; each review runs in a subagent on
 # run.review_model. This prints that subagent's call so the agent passes it
 # as is. Without the Agent tool the review runs inline, on the session's model,
-# and its result line says so.
+# and its result line says so. Either way review-changes is read from its
+# SKILL.md by absolute path, never through the Skill tool: in a routine the
+# skills are cloned files, not registered skills.
 
 INLINE_NOTE = "(review sin subagente: modelo de la sesión)"
 
 
 def review_call(cfg, url, directory):
+    skill = REVIEW_CHANGES_SKILL.resolve()
+    if not skill.is_file():
+        fail(f"review-changes is not installed next to review-radar: {skill} "
+             "does not exist")
     model = (cfg.get("run") or {}).get("review_model")
-    prompt = (f"Work from `{directory}`. Invoke the `review-changes` skill with "
-              f"exactly these arguments: `--auto {url}`. When it ends, reply with "
-              "its final `review-result` block, verbatim, and nothing else.")
+    prompt = (f"Work from `{directory}`. Read `{skill}` and follow it exactly, "
+              f"with these arguments: `--auto {url}`. Resolve every path it "
+              "mentions relative to that SKILL.md's folder. Do not use the Skill "
+              "tool. When it ends, reply with its final `review-result` block, "
+              "verbatim, and nothing else.")
     call = {"description": f"review-changes --auto {label_of_url(url)}",
             "prompt": prompt}
     if model:
         call["model"] = model
-    return {"agent": call, "inline_note": INLINE_NOTE}
+    return {"agent": call, "skill_path": str(skill), "inline_note": INLINE_NOTE}
 
 
 def label_of_url(url):

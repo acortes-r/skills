@@ -5,7 +5,7 @@ license: MIT
 compatibility: Built for a Claude Code cloud routine. Requires python3, an authenticated GitHub CLI (gh) used over REST only, the review-changes skill installed next to this one, a Slack connector (search, read channel, read thread, send message), and the configured repositories cloned in the session.
 allowed-tools: Read, Grep, Glob, Bash, Skill, Agent, ToolSearch
 metadata:
-  version: 0.4.1
+  version: 0.4.2
   writes: my Slack DM (slack.notify_channel), plus one ping through the notify.ping_env webhook; GitHub only through review-changes
   modes: dry (lists what it would review) | live (runs review-changes --auto)
   posted_language: es
@@ -151,8 +151,12 @@ The PRs whose gate said `review`, in candidate order.
   6. `$R review-call $C --url <PR url> --dir <dir>`. When the run has the
      Agent tool, call it with the `agent` object it printed, as is: its `model`
      (`run.review_model`) runs the review on that model while the routine
-     stays on its own. Otherwise invoke `review-changes --auto <PR url>`
-     inline from `<dir>`, and add its `inline_note` to the PR's result line.
+     stays on its own. Otherwise run the review inline, from `<dir>`: read
+     the file at its `skill_path` (`review-changes/SKILL.md`) and follow it
+     exactly with the arguments `--auto <PR url>`, resolving every path it
+     mentions relative to that file's folder. Add its `inline_note` to the
+     PR's result line. Either way, never through the Skill tool: in the
+     routine, review-changes is a cloned file, not a registered skill.
   7. Parse the `review-result` JSON block. Missing or unparsable →
      `⚠️ … error: sin review-result`.
 
