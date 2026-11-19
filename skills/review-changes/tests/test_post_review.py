@@ -698,6 +698,107 @@ def test_pr_and_diff_read_through_rest():
           patch == DIFF, patch)
 
 
+# --- what withholds an approval ----------------------------------------
+
+
+def gql_thread(author, path="app/models/user.rb", line=49, resolved=False,
+               outdated=False, cid=700):
+    return {"id": f"PRRT_ajeno{cid}", "isResolved": resolved, "isOutdated": outdated,
+            "path": path, "line": line,
+            "comments": {"nodes": [{"databaseId": cid, "author": {"login": author},
+                                    "body": "Esto puede fallar con nil.",
+                                    "createdAt": "2026-01-03T10:00:00Z",
+                                    "url": f"https://example.test/c/{cid}"}]}}
+
+
+def verdict(login, state, at, bot=False):
+    return {"user": {"login": login, "type": "Bot" if bot else "User"},
+            "state": state, "body": "", "commit_id": HEAD, "submitted_at": at,
+            "html_url": f"https://example.test/review/{login}"}
+
+
+OPEN_THEIRS = [gql_thread("copilot-pull-request-reviewer[bot]", cid=701),
+               gql_thread("revisor-ajeno", path="app/x.rb", line=3, cid=702),
+               gql_thread("revisor-ajeno", path="app/y.rb", line=8, cid=703)]
+
+
+def test_approve_refuses_open_threads_of_others():
+    sent = []
+    out = run(["--approve"], review_threads=OPEN_THEIRS, sent=sent)
+    check("open threads of others, bots included, withhold the approval",
+          "--approve refuses" in out and "3 review thread(s) are open" in out
+          and "EXIT 1" in out and not sent, out)
+    pending = json.loads(out[out.index('{"pendientes"'):out.rindex("}") + 1])["pendientes"]
+    check("the refusal lists them as pendientes, grouped by author with links",
+          pending == ["`revisor-ajeno`: `app/x.rb:3` (https://example.test/c/702), "
+                      "`app/y.rb:8` (https://example.test/c/703)",
+                      "`copilot-pull-request-reviewer[bot]`: `app/models/user.rb:49` "
+                      "(https://example.test/c/701)"], pending)
+    dry = run(["--approve", "--dry-run"], review_threads=OPEN_THEIRS)
+    check("the dry run refuses too, so --auto falls back before sending",
+          "--approve refuses" in dry and "EXIT 1" in dry, dry)
+
+
+def test_approve_allows_outdated_or_resolved_threads():
+    sent = []
+    settled = [gql_thread("revisor-ajeno", outdated=True, cid=704),
+               gql_thread("coderabbitai[bot]", resolved=True, cid=705)]
+    out = run(["--approve"], review_threads=settled, sent=sent)
+    check("outdated or resolved threads of others leave the approval available",
+          len(sent) == 1 and sent[0]["event"] == "APPROVE", out)
+
+
+def test_approve_refuses_a_standing_change_request():
+    sent = []
+    standing = [verdict("revisor-ajeno", "CHANGES_REQUESTED", "2026-01-03T10:00:00Z"),
+                verdict("revisor-ajeno", "COMMENTED", "2026-01-03T11:00:00Z")]
+    out = run(["--approve"], reviews=standing, sent=sent)
+    check("a person whose latest verdict is CHANGES_REQUESTED withholds it",
+          "--approve refuses" in out and "revisor-ajeno is CHANGES_REQUESTED" in out
+          and "`revisor-ajeno` pidió cambios (https://example.test/review/revisor-ajeno)"
+          in out and not sent, out)
+    sent = []
+    later = standing + [verdict("revisor-ajeno", "APPROVED", "2026-01-03T12:00:00Z"),
+                        verdict("coderabbitai[bot]", "CHANGES_REQUESTED",
+                                "2026-01-03T13:00:00Z", bot=True)]
+    out = run(["--approve"], reviews=later, sent=sent)
+    check("a later approval by that person, or a bot's change request, does not",
+          len(sent) == 1 and sent[0]["event"] == "APPROVE", out)
+
+
+def test_approve_refuses_unknown_resolution():
+    sent = []
+    out = run(["--approve"], graphql="error", comments=[], sent=sent)
+    check("thread resolution unknown (REST without state) withholds the approval",
+          "--approve refuses" in out and "resolution is unknown" in out
+          and "EXIT 1" in out and not sent, out)
+
+
+def test_auto_approval_always_has_a_body():
+    sent = []
+    out = run(["--approve", "--auto"], sent=sent)
+    check("an --auto approval with nothing to say still carries its round line",
+          len(sent) == 1 and sent[0].get("body") == "Ronda 1 (abc1234). Sin comentarios nuevos.",
+          out)
+    sent = []
+    out = run(["--approve", "--auto", "--findings", write("fa.json", [
+        {"path": "app/models/user.rb", "line": 49,
+         "body": "🔵 Conviene extraer el aviso a un método."}])], sent=sent)
+    check("an --auto approval with findings keeps its usual body",
+          len(sent) == 1 and sent[0]["body"].startswith("Ronda 1 (abc1234). 1 comentario nuevo"),
+          out)
+
+
+def test_blockers_lists_what_withholds_an_approval():
+    out = run([], sub="blockers", review_threads=OPEN_THEIRS,
+              reviews=[verdict("revisor-ajeno", "CHANGES_REQUESTED", "2026-01-03T10:00:00Z")])
+    data = read_json_out(out)
+    check("blockers prints open threads, change requests, and pendientes lines",
+          data["resolution"] == "known" and data["openThreads"] == 3
+          and data["changesRequested"] == ["revisor-ajeno"]
+          and len(data["pendientes"]) == 3, out)
+
+
 def main():
     print("post_review.py")
     for name, test in sorted(globals().items()):
