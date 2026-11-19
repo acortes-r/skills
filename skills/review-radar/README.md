@@ -44,8 +44,10 @@ team, the schedule, the mode, the review model, and the my-PRs options.
 3. Add it to the routine's **Repositories**, before `acortes-r/skills`, which
    stays last.
 
-Until both are done, its PRs show up as `⏭️ … omitido: repo no configurado`:
-the routine has no access to it (GitHub answers 403), so it never reads it.
+Until both are done, the PRs there that ask for my review show up as
+`⏭️ … omitido: repo no configurado`, and my own PRs there are left out of
+`📬` and `📋`: the routine has no access to it (GitHub answers 403), so it
+never reads it.
 
 ### GitHub search
 

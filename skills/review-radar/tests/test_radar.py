@@ -536,6 +536,35 @@ def gate_routes(pr_data, reviews=(), compare=None):
     return routes
 
 
+def test_gate_skip_line_has_the_author():
+    data, _ = gate(gate_routes(pull(draft=True)))
+    check("a gate skip comes with its ⏭️ line, author included",
+          data["line"] == "⏭️ <https://github.com/acme/tienda-pagos/pull/7|pagos#7>"
+          " · colega-uno · omitido: draft", data)
+    data, _ = gate({}, pr="acme/tienda-nueva#3")
+    check("an unread PR's line has no empty author field",
+          data["line"] == "⏭️ <https://github.com/acme/tienda-nueva/pull/3|nueva#3>"
+          " · omitido: repo no configurado", data)
+    data, _, _ = run(cfg_args("gate", "--pr", "acme/tienda-nueva#3", "--source",
+                              "github", "--author", "colega-dos"), {})
+    check("--author fills the author of a PR the gate cannot read",
+          data["line"] == "⏭️ <https://github.com/acme/tienda-nueva/pull/3|nueva#3>"
+          " · colega-dos · omitido: repo no configurado", data)
+    data, _, _ = run(cfg_args("gate", "--pr", "acme/tienda-pagos#7", "--source",
+                              "slack", "--requested-by", "Colega Uno",
+                              "--requested-by", "Colega Dos"),
+                     gate_routes(pull(draft=True)))
+    check("a Slack request ends the line with vía Slack",
+          data["line"].endswith("· colega-uno · omitido: draft"
+                                " (vía Slack: Colega Uno, Colega Dos)"), data)
+    data, _ = gate(gate_routes(pull()))
+    check("a review decision has no ⏭️ line", "line" not in data, data)
+    data, _ = gate({"repos/acme/tienda-pagos/pulls/7": RuntimeError("gh: HTTP 502")})
+    check("a gate error comes with its ⚠️ line",
+          data["line"] == "⚠️ <https://github.com/acme/tienda-pagos/pull/7|pagos#7>"
+          " · error: gh: HTTP 502", data)
+
+
 def test_gate_rules_in_order():
     cases = [
         ("repo no configurado", {}, "acme/otro-repo#7", "github"),
@@ -1068,14 +1097,12 @@ def test_my_prs_search_only_in_the_org():
     check("no repo is listed one by one",
           not any(isinstance(c, str) and c.split("?")[0].endswith("/pulls")
                   for c in calls), calls)
-    check("a PR from another org is dropped and an unconfigured repo is skipped unread",
-          [p["number"] for p in data["prs"]] == [30]
-          and [s["pr"] for s in data["skipped"]] == ["acme/tienda-nueva#41"]
+    check("only PRs in github.repos are reported; another org's or an "
+          "unconfigured repo's are neither read nor listed",
+          [p["number"] for p in data["prs"]] == [30] and "skipped" not in data
+          and "nueva#41" not in json.dumps(data, ensure_ascii=False)
           and not any(isinstance(c, str) and ("tienda-nueva" in c or "otra-org" in c)
                       for c in calls), data)
-    check("the skipped PR comes with its ⏭️ line",
-          data["skipped"][0]["line"] == "⏭️ <https://github.com/acme/tienda-nueva"
-          "/pull/41|nueva#41> · omitido: repo no configurado", data["skipped"])
 
 
 # --- lock -------------------------------------------------------------------
@@ -1105,6 +1132,29 @@ def lock(lines, *extra, sha=HEAD, raw=None):
                                      "--sha", sha, "--now", NOW, *extra), {})
     assert not calls, calls
     return data, code
+
+
+def test_lock_skip_line_has_the_author():
+    data, _ = lock([lock_line(10, thread="T0")], "--author", "colega-uno")
+    check("a lock skip comes with its ⏭️ line, author included",
+          data["line"] == "⏭️ <https://github.com/acme/tienda-pagos/pull/7|pagos#7>"
+          " · colega-uno · omitido: ya en revisión en otra corrida", data)
+    data, _ = lock([lock_line(10, thread="T0"), lock_line(1, thread="T1")],
+                   "--mine", ts(1), "--author", "colega-uno")
+    check("after my own 🔒 the ⏭️ line ends with the token that releases it",
+          data["line"].endswith(f"· colega-uno · omitido: ya en revisión en otra "
+                                f"corrida [rr:{LOCK_PR}@{HEAD[:7]}]"), data)
+    data, _ = lock([lock_line(10, thread="T0"), lock_line(1, thread="T1")],
+                   "--mine", ts(1), "--author", "colega-uno",
+                   "--requested-by", "Colega Dos")
+    check("vía Slack goes before the token",
+          data["line"].endswith(f"otra corrida (vía Slack: Colega Dos) "
+                                f"[rr:{LOCK_PR}@{HEAD[:7]}]"), data)
+    data, _ = lock([], "--author", "colega-uno", raw="{no es json")
+    check("unreadable locks also come with their ⏭️ line",
+          data["line"].endswith("· colega-uno · omitido: candados ilegibles"), data)
+    data, _ = lock([], "--author", "colega-uno")
+    check("a go has no ⏭️ line", "line" not in data, data)
 
 
 def test_lock_none_goes():

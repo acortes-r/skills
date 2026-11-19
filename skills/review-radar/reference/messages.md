@@ -28,6 +28,10 @@ Busqué en GitHub (<github.me>, @<request_teams>) y Slack (@<group names>, DMs)
 `(vía Slack: <requested_by, comma-separated>)` goes at the end of a line when
 the PR's `sources` include `slack`.
 
+The `⏭️` lines of `gate` and `lock`, and the `⚠️` line of a gate error, come
+ready in their `line` field, author, `vía Slack`, and token included. Send them
+as printed; never rewrite them.
+
 In live mode, every line after a PR's `🔒` that ends that PR (✅ 💬 📝 📭 ⚠️,
 or the `⏭️` of a lost tie-break) ends with the same `<token>`,
 `[rr:<owner>/<repo>#<n>@<head>]`, after the `vía Slack` part. The token
@@ -52,7 +56,7 @@ Severity counts come from `review-result.comments`: the non-zero ones as
 | over `max_reviews_per_run` | `⏳ <link> · <author> · queda para la siguiente corrida` |
 | `radar.py lock` says `skip` | `⏭️ <link> · <author> · omitido: <lock reason>` |
 | gate `skip` | `⏭️ <link> · <author> · omitido: <gate reason>` |
-| gate `skip`, `repo no configurado` | same; `<author>` is the candidate's, the gate cannot read it |
+| gate `skip`, `repo no configurado` | same, with the `--author` the gate got from the candidate |
 | gate `error` | `⚠️ <link> · error: <gate reason>` |
 
 ## 📬 Tus PRs
@@ -106,14 +110,10 @@ it would have had in `📬`.
 💤 <…/pull/1488|integrations#1488> · sin movimiento (4 d)
 ```
 
-After the digest lines, the `line` of each `my-prs` `skipped` entry: a PR of
-mine in a repo of the org outside `github.repos`, which `my-prs` cannot read.
+Only PRs in `github.repos` are listed, here and in `📬`: my PRs in other
+repos are not reported.
 
-```
-⏭️ <…/pull/41|nueva#41> · omitido: repo no configurado
-```
-
-No open PRs: `📋 Tus PRs abiertos (0)` alone, plus any `skipped` lines.
+No open PRs: `📋 Tus PRs abiertos (0)` alone.
 
 ## 🔔 Ping
 

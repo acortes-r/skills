@@ -5,7 +5,7 @@ license: MIT
 compatibility: Built for a Claude Code cloud routine. Requires python3, an authenticated GitHub CLI (gh) used over REST only, the review-changes skill installed next to this one, a Slack connector (search, read channel, read thread, send message), and the configured repositories cloned in the session.
 allowed-tools: Read, Grep, Glob, Bash, Skill, Agent, ToolSearch
 metadata:
-  version: 0.4.2
+  version: 0.4.3
   writes: my Slack DM (slack.notify_channel), plus one ping through the notify.ping_env webhook; GitHub only through review-changes
   modes: dry (lists what it would review) | live (runs review-changes --auto)
   posted_language: es
@@ -33,8 +33,9 @@ R="python3 <skill dir>/scripts/radar.py"; C="--config <skill dir>/config.yml"
   `post_review.py pr|diff|threads`. Cloud sessions answer GraphQL with 403.
 - GitHub is searched only inside `github.org`, and only by `radar.py`: every
   query carries `org:<github.org>`. A repo of the org outside `github.repos`
-  is never read or cloned (a routine gets 403 there); its PRs are reported as
-  `⏭️ … omitido: repo no configurado`.
+  is never read or cloned (a routine gets 403 there). Its PRs that ask for
+  my review are reported as `⏭️ … omitido: repo no configurado`; my own PRs
+  there are not reported.
 - GitHub receives writes only from `review-changes`. Everything about my own
   pull requests is read-only.
 - Slack receives writes only in `slack.notify_channel`: the start message and
@@ -44,6 +45,8 @@ R="python3 <skill dir>/scripts/radar.py"; C="--config <skill dir>/config.yml"
   `Carlos Castro`, a GitHub login, `@core`, `@merchant-services`. The DM never
   carries `<@U…>` or `<!subteam^…>`.
 - One PR's failure is one `⚠️` line; every other PR is still processed.
+- A line that `radar.py` prints in a `line` field goes to the DM exactly as
+  printed: never rewritten, shortened, or rebuilt from its fields.
 
 ## Slack operations
 
@@ -92,8 +95,10 @@ The **digest is due** when `first_run_of_day` and `my_prs.daily_digest` hold.
    `requested_by`, and `gate_source`. A PR from a repo of the org outside
    `github.repos` comes with `why: repo no configurado` and its search
    `author`; the gate skips it without reading it.
-3. **Gate.** For every candidate: `$R gate $C --pr <pr> --source <gate_source>`.
-   Exit code 1 with `decision: error` is that PR's `⚠️` line.
+3. **Gate.** For every candidate: `$R gate $C --pr <pr> --source <gate_source>
+   --author <author>`, plus one `--requested-by <name>` per name in its
+   `requested_by`. A `skip` prints its `⏭️` line in `line`; exit code 1 with
+   `decision: error` prints its `⚠️` line in `line`.
 4. **My PRs.** When `my_prs.enabled`: `$R my-prs $C --since <since>`.
 
 ### 4. Early exit
@@ -136,13 +141,14 @@ The PRs whose gate said `review`, in candidate order.
 
   1. **Locks.** Read them into `${TMPDIR:-/tmp}/review-radar-locks.json`
      following [reference/locks.md](reference/locks.md), then
-     `$R lock $C --lines <file> --pr <pr> --sha <head>`. `skip` →
-     `⏭️ … omitido: <reason>`, next PR.
+     `$R lock $C --lines <file> --pr <pr> --sha <head> --author <author>`,
+     plus the same `--requested-by` as the gate. `skip` → send its `line`,
+     next PR.
   2. **Claim.** Reply `🔒 revisando <link> @ <head> <token>` and keep
      its `ts`.
   3. **Confirm.** Read the locks again and run the same `lock` with
-     `--mine <ts>`. `skip` (another run claimed it first) →
-     `⏭️ … omitido: <reason> <token>`, next PR.
+     `--mine <ts>`. `skip` (another run claimed it first) → send its `line`,
+     which already ends with `<token>`; next PR.
   4. Find its clone: the directory in the session whose `origin` remote points
      at `github.com/<owner>/<repo>`. None → `⚠️ … error: repo no clonado`.
   5. Check out the head without GraphQL:
@@ -169,8 +175,7 @@ The PRs whose gate said `review`, in candidate order.
 One more reply in the thread, only when it has content:
 
 - digest due: `📋 Tus PRs abiertos`, every open PR once, `🆕` on the ones
-  that moved, then the `line` of each `my-prs` `skipped` entry; no `📬`
-  section;
+  that moved; no `📬` section;
 - otherwise: `📬 Tus PRs`, one line per PR with `has_events: true`.
 
 Errors that `candidates` or `my-prs` returned in `errors` go at the end of the

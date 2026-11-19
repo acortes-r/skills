@@ -642,17 +642,33 @@ def decide(cfg, ref, source):
     return "review", f"commits nuevos desde {last[:7]}", summary
 
 
+def skip_line(link, author, reason, requested_by=None, token=None):
+    """`⏭️ <link> · <author> · omitido: <reason> [(vía Slack: …)] [<token>]`:
+    the DM line, sent as is."""
+    line = f"⏭️ {link}{f' · {author}' if author else ''} · omitido: {reason}"
+    if requested_by:
+        line += f" (vía Slack: {', '.join(requested_by)})"
+    return f"{line} {token}" if token else line
+
+
 def cmd_gate(args):
     cfg = load_config(args.config)
+    owner, repo, number = parse_ref(args.pr)
     try:
         decision, reason, summary = decide(cfg, args.pr, args.source)
     except RuntimeError as err:
-        owner, repo, number = parse_ref(args.pr)
-        show({"pr": args.pr, "link": slack_link(owner, repo, number),
-              "decision": "error", "reason": str(err)})
+        link = slack_link(owner, repo, number)
+        show({"pr": args.pr, "link": link, "decision": "error", "reason": str(err),
+              "line": f"⚠️ {link} · error: {err}"})
         sys.exit(1)
-    show({"pr": args.pr, **summary, "decision": decision, "reason": reason,
-          "source": args.source})
+    # An unconfigured repo is never read: its author comes from the candidate.
+    summary.setdefault("author", args.author or "")
+    out = {"pr": args.pr, **summary, "decision": decision, "reason": reason,
+           "source": args.source}
+    if decision == "skip":
+        out["line"] = skip_line(summary["link"], summary["author"], reason,
+                                args.requested_by)
+    show(out)
 
 
 # --- my-prs -----------------------------------------------------------------
@@ -1000,18 +1016,14 @@ def cmd_my_prs(args):
     since = parse_time(args.since, tz)
     now = parse_time(args.now, tz) if args.now else dt.datetime.now(dt.timezone.utc)
     org, me = cfg["github"]["org"], cfg["github"]["me"]
-    out = {"since": since.isoformat(), "prs": [], "skipped": [], "errors": []}
+    out = {"since": since.isoformat(), "prs": [], "errors": []}
     query = f"is:pr is:open org:{org} author:{me}"
     try:
         hits = [h for h in search_issues(query) if login(h.get("user")) == me]
     except RuntimeError as err:
         out["errors"].append({"search": query, "error": str(err)})
         hits = []
-    configured, unconfigured = sort_hits(hits, cfg)
-    for owner, repo, number, item in unconfigured:
-        entry = hit_summary(owner, repo, number, item)
-        out["skipped"].append({**entry, "reason": UNCONFIGURED,
-                               "line": f"⏭️ {entry['link']} · omitido: {UNCONFIGURED}"})
+    configured, _ = sort_hits(hits, cfg)  # only github.repos: the rest is not reported
     for owner, repo, number, item in configured:
         try:
             out["prs"].append(one_pr(cfg, owner, repo, item, since, now))
@@ -1095,14 +1107,19 @@ def cmd_lock(args):
     try:
         lines = lock_lines(args.lines)
         mine = slack_ts(args.mine) if args.mine else None
+        decision, reason, held = decide_lock(lines, pr, now, minutes, mine)
+        out = {"pr": pr, "token": token, "decision": decision, "reason": reason}
     except (OSError, ValueError, KeyError, TypeError, AttributeError) as err:
-        show({"pr": pr, "token": token, "decision": "skip",
-              "reason": "candados ilegibles", "error": str(err)})
-        return
-    decision, reason, held = decide_lock(lines, pr, now, minutes, mine)
-    out = {"pr": pr, "token": token, "decision": decision, "reason": reason}
+        held = None
+        out = {"pr": pr, "token": token, "decision": "skip",
+               "reason": "candados ilegibles", "error": str(err)}
     if held:
         out["held_by"] = held
+    if out["decision"] == "skip":
+        # After my own 🔒 (--mine), the ⏭️ also releases it: it ends with the token.
+        out["line"] = skip_line(slack_link(owner, repo, number), args.author,
+                                out["reason"], args.requested_by,
+                                token if args.mine else None)
     show(out)
 
 
@@ -1208,6 +1225,10 @@ def main(argv=None):
     p.add_argument("--config", required=True)
     p.add_argument("--pr", required=True, help="owner/repo#n")
     p.add_argument("--source", required=True, choices=["github", "slack"])
+    p.add_argument("--author", help="the candidate's author, for a PR the gate "
+                                    "cannot read")
+    p.add_argument("--requested-by", action="append",
+                   help="who asked in Slack; once per person")
     p.set_defaults(run=cmd_gate)
 
     p = sub.add_parser("my-prs")
@@ -1222,6 +1243,9 @@ def main(argv=None):
     p.add_argument("--pr", required=True, help="owner/repo#n")
     p.add_argument("--sha", required=True, help="the head being reviewed")
     p.add_argument("--mine", help="ts of my own 🔒 line")
+    p.add_argument("--author", help="the PR's author, for the ⏭️ line")
+    p.add_argument("--requested-by", action="append",
+                   help="who asked in Slack; once per person")
     p.add_argument("--now")
     p.set_defaults(run=cmd_lock)
 
