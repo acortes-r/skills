@@ -654,6 +654,10 @@ def test_gate_ignores_thread_replies():
                                                commit=HEAD, body="")]))
     check("a change request with no body is a real review",
           data["reason"] == f"ya revisado en {HEAD[:7]}", data)
+    check("ya revisado names only the sha, never the PR label",
+          data["line"] == "⏭️ <https://github.com/acme/tienda-pagos/pull/7|pagos#7>"
+          f" · colega-uno · omitido: ya revisado en {HEAD[:7]}"
+          and "#" not in data["reason"], data)
 
 
 def test_gate_uses_latest_review():
