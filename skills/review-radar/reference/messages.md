@@ -110,14 +110,10 @@ it would have had in `📬`.
 💤 <…/pull/1488|integrations#1488> · sin movimiento (4 d)
 ```
 
-After the digest lines, the `line` of each `my-prs` `skipped` entry: a PR of
-mine in a repo of the org outside `github.repos`, which `my-prs` cannot read.
+Only PRs in `github.repos` are listed, here and in `📬`: my PRs in other
+repos are not reported.
 
-```
-⏭️ <…/pull/41|nueva#41> · omitido: repo no configurado
-```
-
-No open PRs: `📋 Tus PRs abiertos (0)` alone, plus any `skipped` lines.
+No open PRs: `📋 Tus PRs abiertos (0)` alone.
 
 ## 🔔 Ping
 

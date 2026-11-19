@@ -33,8 +33,9 @@ R="python3 <skill dir>/scripts/radar.py"; C="--config <skill dir>/config.yml"
   `post_review.py pr|diff|threads`. Cloud sessions answer GraphQL with 403.
 - GitHub is searched only inside `github.org`, and only by `radar.py`: every
   query carries `org:<github.org>`. A repo of the org outside `github.repos`
-  is never read or cloned (a routine gets 403 there); its PRs are reported as
-  `⏭️ … omitido: repo no configurado`.
+  is never read or cloned (a routine gets 403 there). Its PRs that ask for
+  my review are reported as `⏭️ … omitido: repo no configurado`; my own PRs
+  there are not reported.
 - GitHub receives writes only from `review-changes`. Everything about my own
   pull requests is read-only.
 - Slack receives writes only in `slack.notify_channel`: the start message and
@@ -174,8 +175,7 @@ The PRs whose gate said `review`, in candidate order.
 One more reply in the thread, only when it has content:
 
 - digest due: `📋 Tus PRs abiertos`, every open PR once, `🆕` on the ones
-  that moved, then the `line` of each `my-prs` `skipped` entry; no `📬`
-  section;
+  that moved; no `📬` section;
 - otherwise: `📬 Tus PRs`, one line per PR with `has_events: true`.
 
 Errors that `candidates` or `my-prs` returned in `errors` go at the end of the

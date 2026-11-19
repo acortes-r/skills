@@ -1016,18 +1016,14 @@ def cmd_my_prs(args):
     since = parse_time(args.since, tz)
     now = parse_time(args.now, tz) if args.now else dt.datetime.now(dt.timezone.utc)
     org, me = cfg["github"]["org"], cfg["github"]["me"]
-    out = {"since": since.isoformat(), "prs": [], "skipped": [], "errors": []}
+    out = {"since": since.isoformat(), "prs": [], "errors": []}
     query = f"is:pr is:open org:{org} author:{me}"
     try:
         hits = [h for h in search_issues(query) if login(h.get("user")) == me]
     except RuntimeError as err:
         out["errors"].append({"search": query, "error": str(err)})
         hits = []
-    configured, unconfigured = sort_hits(hits, cfg)
-    for owner, repo, number, item in unconfigured:
-        entry = hit_summary(owner, repo, number, item)
-        out["skipped"].append({**entry, "reason": UNCONFIGURED,
-                               "line": f"⏭️ {entry['link']} · omitido: {UNCONFIGURED}"})
+    configured, _ = sort_hits(hits, cfg)  # only github.repos: the rest is not reported
     for owner, repo, number, item in configured:
         try:
             out["prs"].append(one_pr(cfg, owner, repo, item, since, now))

@@ -1097,14 +1097,12 @@ def test_my_prs_search_only_in_the_org():
     check("no repo is listed one by one",
           not any(isinstance(c, str) and c.split("?")[0].endswith("/pulls")
                   for c in calls), calls)
-    check("a PR from another org is dropped and an unconfigured repo is skipped unread",
-          [p["number"] for p in data["prs"]] == [30]
-          and [s["pr"] for s in data["skipped"]] == ["acme/tienda-nueva#41"]
+    check("only PRs in github.repos are reported; another org's or an "
+          "unconfigured repo's are neither read nor listed",
+          [p["number"] for p in data["prs"]] == [30] and "skipped" not in data
+          and "nueva#41" not in json.dumps(data, ensure_ascii=False)
           and not any(isinstance(c, str) and ("tienda-nueva" in c or "otra-org" in c)
                       for c in calls), data)
-    check("the skipped PR comes with its ⏭️ line",
-          data["skipped"][0]["line"] == "⏭️ <https://github.com/acme/tienda-nueva"
-          "/pull/41|nueva#41> · omitido: repo no configurado", data["skipped"])
 
 
 # --- lock -------------------------------------------------------------------
