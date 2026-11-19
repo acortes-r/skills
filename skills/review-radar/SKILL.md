@@ -3,9 +3,9 @@ name: review-radar
 description: Use when running as an unattended routine — on a schedule or on a GitHub pull request event — to find the pull requests waiting for my review in GitHub and Slack, decide which deserve one, run review-changes --auto on them, report new activity and pending items on my own pull requests, and send a short summary to my Slack DM. Reviews no code itself and decides no approval; review-changes owns that.
 license: MIT
 compatibility: Built for a Claude Code cloud routine. Requires python3, an authenticated GitHub CLI (gh) used over REST only, the review-changes skill installed next to this one, a Slack connector (search, read channel, read thread, send message), and the configured repositories cloned in the session.
-allowed-tools: Read, Grep, Glob, Bash, Skill, Agent
+allowed-tools: Read, Grep, Glob, Bash, Skill, Agent, ToolSearch
 metadata:
-  version: 0.4.0
+  version: 0.4.1
   writes: my Slack DM (slack.notify_channel), plus one ping through the notify.ping_env webhook; GitHub only through review-changes
   modes: dry (lists what it would review) | live (runs review-changes --auto)
   posted_language: es
@@ -124,6 +124,16 @@ The PRs whose gate said `review`, in candidate order.
   gate-error lines. Then, for each PR to review, one at a time, every line is
   its own reply in the thread, sent as soon as it is known. `<head>` is the
   gate's `head`; `<token>` is the `token` that `radar.py lock` prints.
+
+  **Before the first review, once per run: load the Agent tool.** A host can
+  defer it: its name is known but it cannot be called until loaded, and
+  calling it unloaded sends the review inline on the session's model. If
+  `Agent` is not among the callable tools, run `ToolSearch` with
+  `select:Agent` to load it. The run **has the Agent tool** when it is
+  callable after that; only when it still is not (no such tool, or no
+  `ToolSearch`) does every review of the run go inline. Do not check again
+  per PR.
+
   1. **Locks.** Read them into `${TMPDIR:-/tmp}/review-radar-locks.json`
      following [reference/locks.md](reference/locks.md), then
      `$R lock $C --lines <file> --pr <pr> --sha <head>`. `skip` →
@@ -138,8 +148,8 @@ The PRs whose gate said `review`, in candidate order.
   5. Check out the head without GraphQL:
      `git -C <dir> fetch origin pull/<n>/head && git -C <dir> checkout --detach FETCH_HEAD`.
      (`gh pr checkout` uses GraphQL.)
-  6. `$R review-call $C --url <PR url> --dir <dir>`. When the Agent tool
-     exists, call it with the `agent` object it printed, as is: its `model`
+  6. `$R review-call $C --url <PR url> --dir <dir>`. When the run has the
+     Agent tool, call it with the `agent` object it printed, as is: its `model`
      (`run.review_model`) runs the review on that model while the routine
      stays on its own. Otherwise invoke `review-changes --auto <PR url>`
      inline from `<dir>`, and add its `inline_note` to the PR's result line.
