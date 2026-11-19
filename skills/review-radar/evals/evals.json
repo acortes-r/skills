@@ -49,7 +49,7 @@
       "prompt": "/review-radar. First scheduled run of the day, Monday 9:07. One of my PRs got an approval since Friday with CI green and two review threads read over REST with unknown resolution; another is a draft for 6 days; another has had no activity for 4 days.",
       "expected_output": "A 📋 Tus PRs abiertos (3) reply instead of 📬: the approved PR as ✅ aprobado, falta: 2 hilos sin verificar with 🆕 and the approval, then the draft (6 d), then the stale PR (4 d). Every PR is a <url|label#n> link.",
       "expectations": [
-        "Uses since Friday 18:07 from radar.py since.",
+        "Uses since Friday 17:07 from radar.py since.",
         "Does not mark the approved PR as ready to merge while threads are unverified.",
         "Sends the 📋 digest because first_run_of_day and daily_digest are true, and no separate 📬 line for the approved PR.",
         "Copies digest.title and digest.lines from my-prs in order.",

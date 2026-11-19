@@ -7,6 +7,7 @@
     radar.py my-prs     --config config.yml --since <iso8601> [--now <iso8601>]
     radar.py lock       --config config.yml --lines locks.json --pr owner/repo#n
                         --sha <short> [--mine <ts>] [--now <iso8601>]
+    radar.py review-call --config config.yml --url <PR url> --dir <clone>
 
 GitHub is read over REST only (`gh api`): cloud sessions answer GraphQL with
 403. Review threads come from review-changes' `post_review.py threads`, which
@@ -148,6 +149,13 @@ def parse_block(lines, index, indent):
     return out, index
 
 
+# What the Agent tool's `model` accepts.
+REVIEW_MODELS = ("opus", "sonnet", "haiku", "fable")
+
+# github.repo_labels from the loaded config: repo -> short name.
+REPO_LABELS = {}
+
+
 def load_config(path):
     try:
         text = pathlib.Path(path).read_text(encoding="utf-8")
@@ -162,6 +170,23 @@ def load_config(path):
                          ("schedule", "hours"), ("schedule", "minute")):
         if (cfg.get(section) or {}).get(key) in (None, "", []):
             fail(f"{path}: missing {section}.{key}")
+    model = (cfg.get("run") or {}).get("review_model")
+    if model is not None and model not in REVIEW_MODELS:
+        fail(f"{path}: run.review_model must be one of {', '.join(REVIEW_MODELS)},"
+             f" got {model!r}")
+    gh_cfg = cfg["github"]
+    labels = gh_cfg.get("repo_labels") or {}
+    if not isinstance(labels, dict):
+        fail(f"{path}: github.repo_labels must be a map of repo: label")
+    REPO_LABELS.clear()
+    REPO_LABELS.update({str(k): str(v) for k, v in labels.items()})
+    seen = {}
+    for repo in gh_cfg["repos"]:
+        short = label(repo)
+        if short in seen:
+            fail(f"{path}: {seen[short]} and {repo} both get the label {short!r};"
+                 " give one of them its own in github.repo_labels")
+        seen[short] = repo
     return cfg
 
 
@@ -287,7 +312,12 @@ def search_throttle():
 
 
 def search_issues(query):
-    """Every issue/PR the search API returns for `query`, paged by hand."""
+    """Every issue/PR the search API returns for `query`, paged by hand.
+
+    Every query is scoped to one org: a search without `org:` never runs.
+    """
+    if not re.search(r"(^|\s)org:\S", query):
+        raise RuntimeError(f"search without org: refused: {query!r}")
     items = []
     for page in range(1, SEARCH_MAX_PAGES + 1):
         args = ["api", "-X", "GET", "search/issues", "-f", f"q={query}",
@@ -314,6 +344,33 @@ def search_ref(item):
     return f"{full}#{item.get('number')}"
 
 
+UNCONFIGURED = "repo no configurado"
+
+
+def sort_hits(hits, cfg):
+    """Split search results into (configured, unconfigured), each a list of
+    (owner, repo, number, item). A result from another org is dropped; one
+    from a repo of the org outside github.repos is listed, never read."""
+    org, repos = cfg["github"]["org"], cfg["github"]["repos"]
+    configured, unconfigured = [], []
+    for item in hits:
+        match = PR_REF.match(search_ref(item))
+        if not match or match.group(1) != org:
+            continue
+        owner, repo, number = match.group(1), match.group(2), int(match.group(3))
+        (configured if repo in repos else unconfigured).append(
+            (owner, repo, number, item))
+    return configured, unconfigured
+
+
+def hit_summary(owner, repo, number, item):
+    """What a search result says about a PR, without reading its repo."""
+    return {"pr": f"{owner}/{repo}#{number}", "repo": repo, "label": label(repo),
+            "number": number, "link": slack_link(owner, repo, number),
+            "title": item.get("title") or "", "author": login(item.get("user")),
+            "url": item.get("html_url")}
+
+
 def review_threads(full, number):
     """(source, threads) from post_review.py threads."""
     done = subprocess.run([sys.executable, str(POST_REVIEW), "threads",
@@ -334,8 +391,9 @@ def is_bot(user):
 
 
 def label(repo):
-    """Short repo name for messages: platform-purchase -> purchase."""
-    return repo.rsplit("-", 1)[-1]
+    """Short repo name for messages: github.repo_labels first, else what
+    follows the last hyphen (platform-purchase -> purchase)."""
+    return REPO_LABELS.get(repo) or repo.rsplit("-", 1)[-1]
 
 
 PR_REF = re.compile(r"^([\w.-]+)/([\w.-]+)#(\d+)$")
@@ -479,7 +537,7 @@ def collect_github(args, cfg, out):
     if args.pr:
         owner, repo, number = parse_ref(args.pr)
         if owner != org or repo not in cfg["github"]["repos"]:
-            out["not_candidate"] = {"pr": args.pr, "reason": "repo no configurado"}
+            out["not_candidate"] = {"pr": args.pr, "reason": UNCONFIGURED}
             return
         try:
             pr = api(f"repos/{owner}/{repo}/pulls/{number}")
@@ -503,10 +561,13 @@ def collect_github(args, cfg, out):
         for item in hits:
             if login(item.get("user")) != me:  # my own PRs belong to my-prs
                 found.setdefault(search_ref(item), item)
-    for ref in found:
-        owner, repo, number = parse_ref(ref)
-        if owner != org or repo not in cfg["github"]["repos"]:
-            continue
+    configured, unconfigured = sort_hits(found.values(), cfg)
+    for owner, repo, number, item in unconfigured:
+        # Its API answers 403 in a routine: the gate skips it unread.
+        out["candidates"].append({**hit_summary(owner, repo, number, item),
+                                  "why": UNCONFIGURED})
+    for owner, repo, number, _ in configured:
+        ref = f"{owner}/{repo}#{number}"
         try:
             pr = api(f"repos/{owner}/{repo}/pulls/{number}")
             reason = why_candidate(pr, cfg, owner, repo)
@@ -518,14 +579,15 @@ def collect_github(args, cfg, out):
 
 
 def search_queries(cfg):
-    """One search per way a PR can be mine to review, over the configured repos.
+    """One search per way a PR can be mine to review, over github.org only.
 
-    The search narrows the list; why_candidate still decides, so a request to a
-    team outside request_teams, or a thread reply counted as a review, drops out.
+    The search narrows the list; sort_hits keeps the configured repos, and
+    why_candidate still decides, so a request to a team outside request_teams,
+    or a thread reply counted as a review, drops out.
     """
     gh_cfg = cfg["github"]
     org, me = gh_cfg["org"], gh_cfg["me"]
-    base = "is:pr is:open " + " ".join(f"repo:{org}/{r}" for r in gh_cfg["repos"])
+    base = f"is:pr is:open org:{org}"
     return ([f"{base} review-requested:{me}"]
             + [f"{base} team-review-requested:{org}/{team}"
                for team in gh_cfg.get("request_teams") or []]
@@ -541,7 +603,9 @@ def decide(cfg, ref, source):
     me = gh_cfg["me"]
     owner, repo, number = parse_ref(ref)
     if owner != gh_cfg["org"] or repo not in gh_cfg["repos"]:
-        return "skip", "repo no configurado", {}
+        return "skip", UNCONFIGURED, {"repo": repo, "label": label(repo),
+                                      "number": number,
+                                      "link": slack_link(owner, repo, number)}
     pr = api(f"repos/{owner}/{repo}/pulls/{number}")
     summary = pr_summary(pr, owner, repo)
     if pr.get("merged") or pr.get("merged_at"):
@@ -933,21 +997,24 @@ def cmd_my_prs(args):
     since = parse_time(args.since, tz)
     now = parse_time(args.now, tz) if args.now else dt.datetime.now(dt.timezone.utc)
     org, me = cfg["github"]["org"], cfg["github"]["me"]
-    out = {"since": since.isoformat(), "prs": [], "errors": []}
-    for repo in cfg["github"]["repos"]:
+    out = {"since": since.isoformat(), "prs": [], "skipped": [], "errors": []}
+    query = f"is:pr is:open org:{org} author:{me}"
+    try:
+        hits = [h for h in search_issues(query) if login(h.get("user")) == me]
+    except RuntimeError as err:
+        out["errors"].append({"search": query, "error": str(err)})
+        hits = []
+    configured, unconfigured = sort_hits(hits, cfg)
+    for owner, repo, number, item in unconfigured:
+        entry = hit_summary(owner, repo, number, item)
+        out["skipped"].append({**entry, "reason": UNCONFIGURED,
+                               "line": f"⏭️ {entry['link']} · omitido: {UNCONFIGURED}"})
+    for owner, repo, number, item in configured:
         try:
-            pulls = api_pages(f"repos/{org}/{repo}/pulls?state=open")
+            out["prs"].append(one_pr(cfg, owner, repo, item, since, now))
         except RuntimeError as err:
-            out["errors"].append({"repo": f"{org}/{repo}", "error": str(err)})
-            continue
-        for listed in pulls:
-            if login(listed.get("user")) != me:
-                continue
-            try:
-                out["prs"].append(one_pr(cfg, org, repo, listed, since, now))
-            except RuntimeError as err:
-                out["errors"].append({"pr": f"{org}/{repo}#{listed['number']}",
-                                      "error": str(err)})
+            out["errors"].append({"pr": f"{owner}/{repo}#{number}",
+                                  "error": str(err)})
     out["digest"] = digest(out["prs"])
     show(out)
 
@@ -1036,6 +1103,39 @@ def cmd_lock(args):
     show(out)
 
 
+# --- review-call ------------------------------------------------------------
+# The routine runs on a cheaper model; each review runs in a subagent on
+# run.review_model. This prints that subagent's call so the agent passes it
+# as is. Without the Agent tool the review runs inline, on the session's model,
+# and its result line says so.
+
+INLINE_NOTE = "(review sin subagente: modelo de la sesión)"
+
+
+def review_call(cfg, url, directory):
+    model = (cfg.get("run") or {}).get("review_model")
+    prompt = (f"Work from `{directory}`. Invoke the `review-changes` skill with "
+              f"exactly these arguments: `--auto {url}`. When it ends, reply with "
+              "its final `review-result` block, verbatim, and nothing else.")
+    call = {"description": f"review-changes --auto {label_of_url(url)}",
+            "prompt": prompt}
+    if model:
+        call["model"] = model
+    return {"agent": call, "inline_note": INLINE_NOTE}
+
+
+def label_of_url(url):
+    match = PR_URL.search(url)
+    return f"{label(match.group(2))}#{match.group(3)}" if match else url
+
+
+def cmd_review_call(args):
+    cfg = load_config(args.config)
+    if not PR_URL.search(args.url):
+        fail(f"--url must be a GitHub pull request URL, got {args.url!r}")
+    show(review_call(cfg, args.url, args.dir))
+
+
 # --- ping -------------------------------------------------------------------
 # One extra message from another sender (a Slack workflow webhook), so Slack
 # notifies me. The URL lives in an environment variable and is never printed.
@@ -1113,6 +1213,12 @@ def main(argv=None):
     p.add_argument("--mine", help="ts of my own 🔒 line")
     p.add_argument("--now")
     p.set_defaults(run=cmd_lock)
+
+    p = sub.add_parser("review-call")
+    p.add_argument("--config", required=True)
+    p.add_argument("--url", required=True, help="the PR's GitHub URL")
+    p.add_argument("--dir", required=True, help="the PR's clone, head checked out")
+    p.set_defaults(run=cmd_review_call)
 
     p = sub.add_parser("ping")
     p.add_argument("--config", required=True)

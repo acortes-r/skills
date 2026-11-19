@@ -51,6 +51,7 @@ schedule:
 run:
   mode: dry
   max_reviews_per_run: 3
+  review_model: opus
   lock_minutes: 90
 my_prs:
   enabled: true
@@ -136,6 +137,7 @@ def run(argv, routes, threads=("graphql", [])):
 
     originals = mod.gh, mod.review_threads
     mod.gh = fake_gh
+    mod._search_times[:] = []  # each run starts with a fresh search budget
     mod.review_threads = lambda full, number: threads
     buffer = io.StringIO()
     code = 0
@@ -199,6 +201,58 @@ def test_config_subset_parses():
           cfg)
 
 
+def config_with(repos, labels=None):
+    """A copy of CONFIG with other repos and, optionally, repo_labels."""
+    text = CONFIG.replace("  repos: [tienda-pagos, tienda-web]\n",
+                          f"  repos: [{', '.join(repos)}]\n")
+    if labels:
+        text = text.replace("  request_teams:", "  repo_labels:\n" + "".join(
+            f"    {repo}: {short}\n" for repo, short in labels.items())
+            + "  request_teams:")
+    path = TMP / "config-labels.yml"
+    path.write_text(text)
+    return path
+
+
+def load_quietly(path):
+    """(cfg or None, stderr) of load_config, which exits on a bad config."""
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        try:
+            return mod.load_config(str(path)), err.getvalue()
+        except SystemExit:
+            return None, err.getvalue()
+
+
+def test_repo_labels():
+    cfg, _ = load_quietly(config_with(["tienda-pagos", "js-api-client", "mostrador"],
+                                      {"js-api-client": "js-cliente"}))
+    try:
+        check("repo_labels wins, else what follows the last hyphen, else the name",
+              cfg is not None and [mod.label(r) for r in cfg["github"]["repos"]]
+              == ["pagos", "js-cliente", "mostrador"], cfg)
+        check("a link uses the configured label",
+              mod.slack_link("acme", "js-api-client", 4)
+              == "<https://github.com/acme/js-api-client/pull/4|js-cliente#4>")
+    finally:
+        mod.load_config(str(CFG_PATH))
+
+
+def test_repo_label_collision_fails():
+    cfg, err = load_quietly(config_with(["tienda-web", "pagos-web"]))
+    check("two repos with the same label stop the load, naming both",
+          cfg is None and "tienda-web" in err and "pagos-web" in err
+          and "'web'" in err, err)
+    cfg, err = load_quietly(config_with(["tienda-web", "pagos-web"],
+                                        {"pagos-web": "pagos-web"}))
+    check("a repo_labels entry resolves the collision", cfg is not None, err)
+    cfg, err = load_quietly(config_with(["tienda-web", "pagos-web"],
+                                        {"pagos-web": "web"}))
+    check("a repo_label that repeats another repo's label also fails",
+          cfg is None and "tienda-web" in err and "pagos-web" in err, err)
+    mod.load_config(str(CFG_PATH))
+
+
 # --- since ------------------------------------------------------------------
 
 
@@ -241,6 +295,28 @@ def test_since_late_trigger_keeps_its_slot():
           data["since"] == "2026-03-10T09:07:00-06:00", data)
 
 
+def since_every_two_hours(now):
+    path = TMP / "config-2h.yml"
+    path.write_text(CONFIG.replace("hours: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18]",
+                                   "hours: [9, 11, 13, 15, 17]"))
+    data, _, _ = run(["since", "--config", str(path), "--now", now], {})
+    return data
+
+
+def test_since_every_two_hours():
+    data = since_every_two_hours("2026-03-10T11:07:10-06:00")  # Tuesday
+    check("every 2 h: the 11:07 run covers from 9:07",
+          data["since"] == "2026-03-10T09:07:00-06:00"
+          and data["first_run_of_day"] is False and data["scheduled"] is True, data)
+
+
+def test_since_every_two_hours_monday():
+    data = since_every_two_hours("2026-03-16T09:07:10-06:00")  # Monday
+    check("every 2 h: Monday 9:07 covers from Friday 17:07 and is the digest run",
+          data["since"] == "2026-03-13T17:07:00-06:00"
+          and data["first_run_of_day"] is True, data)
+
+
 def test_since_accepts_utc():
     data = since_at("2026-03-10T16:07:10Z")  # 10:07 in Merida
     check("--now in UTC is converted to the schedule's zone",
@@ -250,10 +326,12 @@ def test_since_accepts_utc():
 # --- candidates -------------------------------------------------------------
 
 
-def hit(number, repo="tienda-pagos", author="colega-uno"):
+def hit(number, repo="tienda-pagos", author="colega-uno", owner="acme"):
     """A search/issues result for a PR."""
     return {"number": number, "user": {"login": author, "type": "User"},
-            "repository_url": f"https://api.example.test/repos/acme/{repo}",
+            "title": f"Cambio ficticio {number}",
+            "html_url": f"https://example.test/{owner}/{repo}/pull/{number}",
+            "repository_url": f"https://api.example.test/repos/{owner}/{repo}",
             "pull_request": {}}
 
 
@@ -294,14 +372,62 @@ def test_candidates_search_queries():
     data, _, calls = run(cfg_args("candidates"), routes)
     queries = [fields["q"] for endpoint, fields in
                (c for c in calls if isinstance(c, tuple))]
-    base = "is:pr is:open repo:acme/tienda-pagos repo:acme/tienda-web"
-    check("three searches over the configured repos: me, each team, reviewed by me",
+    base = "is:pr is:open org:acme"
+    check("three searches over github.org: me, each team, reviewed by me",
           queries == [f"{base} review-requested:yo-ficticio",
                       f"{base} team-review-requested:acme/nucleo",
                       f"{base} reviewed-by:yo-ficticio"], queries)
     check("a PR found by two searches is evaluated once",
           calls.count("repos/acme/tienda-pagos/pulls/1") == 1
           and len(data["candidates"]) == 1, calls)
+
+
+def searched(calls):
+    return [fields["q"] for endpoint, fields in
+            (c for c in calls if isinstance(c, tuple)) if endpoint == "search/issues"]
+
+
+def test_candidates_search_only_in_the_org():
+    routes = {"search/issues": search(
+                  requested=[hit(1), hit(2, owner="otra-org"),
+                             hit(3, repo="tienda-nueva")],
+                  reviewed=[hit(4, repo="tienda-nueva", owner="yo-ficticio")]),
+              "repos/acme/tienda-pagos/pulls/1": pull(1, reviewers=["yo-ficticio"])}
+    data, _, calls = run(cfg_args("candidates"), routes)
+    queries = searched(calls)
+    check("every search carries org:acme and no repo: or user: qualifier",
+          queries and all(" org:acme " in f" {q} " and "repo:" not in q
+                          and "user:" not in q for q in queries), queries)
+    by_pr = {c["pr"]: c for c in data["candidates"]}
+    check("a result from another org, or a personal repo, is dropped",
+          "otra-org/tienda-pagos#2" not in by_pr
+          and "yo-ficticio/tienda-nueva#4" not in by_pr, by_pr)
+    new = by_pr.get("acme/tienda-nueva#3", {})
+    check("a PR of the org in an unconfigured repo is listed as repo no configurado",
+          new.get("why") == "repo no configurado" and new.get("author") == "colega-uno"
+          and new.get("link") == "<https://github.com/acme/tienda-nueva/pull/3|nueva#3>",
+          new)
+    check("an unconfigured repo is never read",
+          not any(isinstance(c, str) and "tienda-nueva" in c for c in calls)
+          and not any(isinstance(c, str) and "otra-org" in c for c in calls), calls)
+    gated, gate_calls = gate({}, pr="acme/tienda-nueva#3")
+    check("its gate skips it unread, with a link for the ⏭️ line",
+          gated["decision"] == "skip" and gated["reason"] == "repo no configurado"
+          and gated["link"].endswith("|nueva#3>") and gate_calls == [], gated)
+
+
+def test_search_without_org_is_refused():
+    calls = []
+    original, mod.gh = mod.gh, lambda args: calls.append(args) or "{}"
+    try:
+        mod.search_issues("is:pr is:open review-requested:yo-ficticio")
+        refused = False
+    except RuntimeError:
+        refused = True
+    finally:
+        mod.gh = original
+    check("a search with no org: qualifier never reaches GitHub",
+          refused and calls == [], calls)
 
 
 def test_search_pages_by_hand():
@@ -505,8 +631,8 @@ def my_routes(pr_data, reviews=(), review_comments=(), issue_comments=(),
     n = pr_data["number"]
     base = f"repos/acme/tienda-pagos/pulls/{n}"
     sha = pr_data["head"]["sha"]
-    return {"repos/acme/tienda-pagos/pulls": [pr_data, pull(99, author="colega-dos")],
-            "repos/acme/tienda-web/pulls": [],
+    return {"search/issues": mine_search(hit(n, author="yo-ficticio"),
+                                         hit(99, author="colega-dos")),
             base: pr_data,
             f"{base}/reviews": list(reviews),
             f"{base}/comments": list(review_comments),
@@ -519,6 +645,11 @@ def my_routes(pr_data, reviews=(), review_comments=(), issue_comments=(),
             f"repos/acme/tienda-pagos/commits/{sha}/status":
                 status or {"state": "pending", "statuses": []},
             f"repos/acme/tienda-pagos/issues/{n}/timeline": list(timeline)}
+
+
+def mine_search(*items):
+    """search/issues for my-prs: every item on page 1."""
+    return lambda fields: {"items": list(items) if fields["page"] == "1" else []}
 
 
 def my_prs(routes, threads=("graphql", [])):
@@ -916,11 +1047,35 @@ def test_events_line():
 
 def test_my_prs_error_does_not_stop_others():
     routes = my_routes(mine())
-    routes["repos/acme/tienda-web/pulls"] = RuntimeError("gh: HTTP 502")
+    routes["search/issues"] = mine_search(hit(30, author="yo-ficticio"),
+                                          hit(31, repo="tienda-web", author="yo-ficticio"))
+    routes["repos/acme/tienda-web/pulls/31"] = RuntimeError("gh: HTTP 502")
     data, _ = my_prs(routes)
-    check("a failing repo is recorded and the rest still reported",
+    check("a failing PR is recorded and the rest still reported",
           [p["number"] for p in data["prs"]] == [30]
-          and data["errors"][0]["repo"] == "acme/tienda-web", data)
+          and data["errors"][0]["pr"] == "acme/tienda-web#31", data)
+
+
+def test_my_prs_search_only_in_the_org():
+    routes = my_routes(mine())
+    routes["search/issues"] = mine_search(
+        hit(30, author="yo-ficticio"),
+        hit(40, owner="otra-org", author="yo-ficticio"),
+        hit(41, repo="tienda-nueva", author="yo-ficticio"))
+    data, calls = my_prs(routes)
+    check("my-prs finds my PRs with one search in org:acme",
+          searched(calls) == ["is:pr is:open org:acme author:yo-ficticio"], calls)
+    check("no repo is listed one by one",
+          not any(isinstance(c, str) and c.split("?")[0].endswith("/pulls")
+                  for c in calls), calls)
+    check("a PR from another org is dropped and an unconfigured repo is skipped unread",
+          [p["number"] for p in data["prs"]] == [30]
+          and [s["pr"] for s in data["skipped"]] == ["acme/tienda-nueva#41"]
+          and not any(isinstance(c, str) and ("tienda-nueva" in c or "otra-org" in c)
+                      for c in calls), data)
+    check("the skipped PR comes with its ⏭️ line",
+          data["skipped"][0]["line"] == "⏭️ <https://github.com/acme/tienda-nueva"
+          "/pull/41|nueva#41> · omitido: repo no configurado", data["skipped"])
 
 
 # --- lock -------------------------------------------------------------------
@@ -1145,6 +1300,37 @@ def test_ping_disabled():
     data, requests, _ = ping(env=FAKE_HOOK, config=CFG_PATH)
     check("no notify.ping in config → no ping",
           not data["sent"] and not requests and data["reason"] == "ping desactivado", data)
+
+
+# --- review-call ------------------------------------------------------------
+
+
+def test_review_call_passes_review_model():
+    url = "https://github.com/acme/tienda-pagos/pull/7"
+    data, code, calls = run(cfg_args("review-call", "--url", url,
+                                     "--dir", "/ficticio/tienda-pagos"), {})
+    agent = data.get("agent") or {}
+    check("the review subagent runs on run.review_model",
+          code == 0 and agent.get("model") == "opus" and not calls, data)
+    check("its prompt asks for review-changes --auto on the PR, from the clone",
+          f"`--auto {url}`" in agent.get("prompt", "")
+          and "/ficticio/tienda-pagos" in agent["prompt"]
+          and "review-result" in agent["prompt"], agent)
+    check("an inline review is marked as running on the session's model",
+          data.get("inline_note") == "(review sin subagente: modelo de la sesión)", data)
+
+
+def test_review_model_is_checked():
+    path = TMP / "config-model.yml"
+    path.write_text(CONFIG.replace("review_model: opus", "review_model: gpt"))
+    cfg, err = load_quietly(path)
+    check("an unknown review_model stops the load", cfg is None and "gpt" in err, err)
+    path.write_text(CONFIG.replace("  review_model: opus\n", ""))
+    data, _, _ = run(["review-call", "--config", str(path), "--url",
+                      "https://github.com/acme/tienda-pagos/pull/7", "--dir", "/x"], {})
+    check("no review_model → no model in the call: the subagent inherits",
+          "model" not in data["agent"], data)
+    mod.load_config(str(CFG_PATH))
 
 
 def main():

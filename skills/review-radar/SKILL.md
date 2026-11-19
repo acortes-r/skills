@@ -5,7 +5,7 @@ license: MIT
 compatibility: Built for a Claude Code cloud routine. Requires python3, an authenticated GitHub CLI (gh) used over REST only, the review-changes skill installed next to this one, a Slack connector (search, read channel, read thread, send message), and the configured repositories cloned in the session.
 allowed-tools: Read, Grep, Glob, Bash, Skill, Agent
 metadata:
-  version: 0.3.0
+  version: 0.4.0
   writes: my Slack DM (slack.notify_channel), plus one ping through the notify.ping_env webhook; GitHub only through review-changes
   modes: dry (lists what it would review) | live (runs review-changes --auto)
   posted_language: es
@@ -31,6 +31,10 @@ R="python3 <skill dir>/scripts/radar.py"; C="--config <skill dir>/config.yml"
 
 - GitHub is read over REST only: `radar.py`, `gh api …`, and
   `post_review.py pr|diff|threads`. Cloud sessions answer GraphQL with 403.
+- GitHub is searched only inside `github.org`, and only by `radar.py`: every
+  query carries `org:<github.org>`. A repo of the org outside `github.repos`
+  is never read or cloned (a routine gets 403 there); its PRs are reported as
+  `⏭️ … omitido: repo no configurado`.
 - GitHub receives writes only from `review-changes`. Everything about my own
   pull requests is read-only.
 - Slack receives writes only in `slack.notify_channel`: the start message and
@@ -85,7 +89,9 @@ The **digest is due** when `first_run_of_day` and `my_prs.daily_digest` hold.
    `${TMPDIR:-/tmp}/review-radar-slack.json`.
 2. **Candidates.** `$R candidates $C --slack ${TMPDIR:-/tmp}/review-radar-slack.json`.
    It merges GitHub and Slack into one entry per PR, with `sources`,
-   `requested_by`, and `gate_source`.
+   `requested_by`, and `gate_source`. A PR from a repo of the org outside
+   `github.repos` comes with `why: repo no configurado` and its search
+   `author`; the gate skips it without reading it.
 3. **Gate.** For every candidate: `$R gate $C --pr <pr> --source <gate_source>`.
    Exit code 1 with `decision: error` is that PR's `⚠️` line.
 4. **My PRs.** When `my_prs.enabled`: `$R my-prs $C --since <since>`.
@@ -132,10 +138,11 @@ The PRs whose gate said `review`, in candidate order.
   5. Check out the head without GraphQL:
      `git -C <dir> fetch origin pull/<n>/head && git -C <dir> checkout --detach FETCH_HEAD`.
      (`gh pr checkout` uses GraphQL.)
-  6. From `<dir>`, run `review-changes --auto <PR url>`. When the Agent tool
-     exists, run it in a subagent whose prompt asks for the `review-changes`
-     skill with exactly those arguments, from `<dir>`, and for the final
-     `review-result` block back verbatim; otherwise invoke the skill inline.
+  6. `$R review-call $C --url <PR url> --dir <dir>`. When the Agent tool
+     exists, call it with the `agent` object it printed, as is: its `model`
+     (`run.review_model`) runs the review on that model while the routine
+     stays on its own. Otherwise invoke `review-changes --auto <PR url>`
+     inline from `<dir>`, and add its `inline_note` to the PR's result line.
   7. Parse the `review-result` JSON block. Missing or unparsable →
      `⚠️ … error: sin review-result`.
 
@@ -148,7 +155,8 @@ The PRs whose gate said `review`, in candidate order.
 One more reply in the thread, only when it has content:
 
 - digest due: `📋 Tus PRs abiertos`, every open PR once, `🆕` on the ones
-  that moved; no `📬` section;
+  that moved, then the `line` of each `my-prs` `skipped` entry; no `📬`
+  section;
 - otherwise: `📬 Tus PRs`, one line per PR with `has_events: true`.
 
 Errors that `candidates` or `my-prs` returned in `errors` go at the end of the

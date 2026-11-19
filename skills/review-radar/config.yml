@@ -1,7 +1,22 @@
 github:
   org: reservamos
   me: acortes-r
-  repos: [platform-purchase, saas-integrations, platform-funnel]
+  repos:                         # solo repos de github.org
+    [platform-purchase, platform-funnel, saas-integrations, saas-admin,
+     search-widget, reserhub, siempreplus-widget, reservamos-transporters,
+     reservamos-frontline, frontline, frontline-platform, saas-automated-tests,
+     auth-whitelabel, reservamos-cybersource, reservamos-kushki,
+     reservamos-mercadopago, whitelabel-accounts, js-api-client, platform-sre]
+  # Nombre corto en el DM. Sin entrada: lo que va después del último guion.
+  # Dos repos con el mismo nombre corto hacen fallar la carga del config.
+  repo_labels:
+    search-widget: search-widget
+    siempreplus-widget: siempreplus
+    reservamos-frontline: rv-frontline
+    frontline: frontline
+    frontline-platform: frontline-platform
+    saas-automated-tests: automated-tests
+    js-api-client: js-client
   request_teams: [core]          # review pedido a este team = pedido a mí
   my_team_authors:               # Merchant Services
     [a10003202, acortes-r, carlitos, alejandrocen-r, JazminDominguez, rowend]
@@ -18,12 +33,13 @@ notify:
 schedule:
   tz: America/Merida
   days: [1, 2, 3, 4, 5]          # lunes a viernes
-  hours: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+  hours: [9, 11, 13, 15, 17]     # cron: 7 9-17/2 * * 1-5
   minute: 7
 run:
   mode: live                     # dry | live
-  max_reviews_per_run: 3          # corridas cortas, menos encimadas
-  lock_minutes: 90               # un 🔒 sin resultado vence después de esto
+  max_reviews_per_run: 5         # caben en las 2 h entre corridas
+  review_model: opus             # modelo del subagente de cada review
+  lock_minutes: 90               # un 🔒 sin resultado vence después de esto (< 2 h)
 my_prs:
   enabled: true
   stale_days: 3
