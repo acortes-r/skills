@@ -33,6 +33,10 @@ or the `⏭️` of a lost tie-break) ends with the same `<token>`,
 `[rr:<owner>/<repo>#<n>@<head>]`, after the `vía Slack` part. The token
 releases the lock; see [locks.md](locks.md).
 
+A review that ran inline, with no Agent tool, adds `review-call`'s
+`inline_note`, `(review sin subagente: modelo de la sesión)`, after the last
+field of its result line and before `vía Slack` and the token.
+
 Severity counts come from `review-result.comments`: the non-zero ones as
 `<n> 🔴`, `<n> 🟠`, `<n> 🔵`, joined by ` · `; `sin comentarios` when all are 0.
 

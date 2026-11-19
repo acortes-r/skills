@@ -138,10 +138,11 @@ The PRs whose gate said `review`, in candidate order.
   5. Check out the head without GraphQL:
      `git -C <dir> fetch origin pull/<n>/head && git -C <dir> checkout --detach FETCH_HEAD`.
      (`gh pr checkout` uses GraphQL.)
-  6. From `<dir>`, run `review-changes --auto <PR url>`. When the Agent tool
-     exists, run it in a subagent whose prompt asks for the `review-changes`
-     skill with exactly those arguments, from `<dir>`, and for the final
-     `review-result` block back verbatim; otherwise invoke the skill inline.
+  6. `$R review-call $C --url <PR url> --dir <dir>`. When the Agent tool
+     exists, call it with the `agent` object it printed, as is: its `model`
+     (`run.review_model`) runs the review on that model while the routine
+     stays on its own. Otherwise invoke `review-changes --auto <PR url>`
+     inline from `<dir>`, and add its `inline_note` to the PR's result line.
   7. Parse the `review-result` JSON block. Missing or unparsable →
      `⚠️ … error: sin review-result`.
 

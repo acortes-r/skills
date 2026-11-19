@@ -51,6 +51,7 @@ schedule:
 run:
   mode: dry
   max_reviews_per_run: 3
+  review_model: opus
   lock_minutes: 90
 my_prs:
   enabled: true
@@ -1276,6 +1277,37 @@ def test_ping_disabled():
     data, requests, _ = ping(env=FAKE_HOOK, config=CFG_PATH)
     check("no notify.ping in config → no ping",
           not data["sent"] and not requests and data["reason"] == "ping desactivado", data)
+
+
+# --- review-call ------------------------------------------------------------
+
+
+def test_review_call_passes_review_model():
+    url = "https://github.com/acme/tienda-pagos/pull/7"
+    data, code, calls = run(cfg_args("review-call", "--url", url,
+                                     "--dir", "/ficticio/tienda-pagos"), {})
+    agent = data.get("agent") or {}
+    check("the review subagent runs on run.review_model",
+          code == 0 and agent.get("model") == "opus" and not calls, data)
+    check("its prompt asks for review-changes --auto on the PR, from the clone",
+          f"`--auto {url}`" in agent.get("prompt", "")
+          and "/ficticio/tienda-pagos" in agent["prompt"]
+          and "review-result" in agent["prompt"], agent)
+    check("an inline review is marked as running on the session's model",
+          data.get("inline_note") == "(review sin subagente: modelo de la sesión)", data)
+
+
+def test_review_model_is_checked():
+    path = TMP / "config-model.yml"
+    path.write_text(CONFIG.replace("review_model: opus", "review_model: gpt"))
+    cfg, err = load_quietly(path)
+    check("an unknown review_model stops the load", cfg is None and "gpt" in err, err)
+    path.write_text(CONFIG.replace("  review_model: opus\n", ""))
+    data, _, _ = run(["review-call", "--config", str(path), "--url",
+                      "https://github.com/acme/tienda-pagos/pull/7", "--dir", "/x"], {})
+    check("no review_model → no model in the call: the subagent inherits",
+          "model" not in data["agent"], data)
+    mod.load_config(str(CFG_PATH))
 
 
 def main():

@@ -7,6 +7,7 @@
     radar.py my-prs     --config config.yml --since <iso8601> [--now <iso8601>]
     radar.py lock       --config config.yml --lines locks.json --pr owner/repo#n
                         --sha <short> [--mine <ts>] [--now <iso8601>]
+    radar.py review-call --config config.yml --url <PR url> --dir <clone>
 
 GitHub is read over REST only (`gh api`): cloud sessions answer GraphQL with
 403. Review threads come from review-changes' `post_review.py threads`, which
@@ -148,6 +149,9 @@ def parse_block(lines, index, indent):
     return out, index
 
 
+# What the Agent tool's `model` accepts.
+REVIEW_MODELS = ("opus", "sonnet", "haiku", "fable")
+
 # github.repo_labels from the loaded config: repo -> short name.
 REPO_LABELS = {}
 
@@ -166,6 +170,10 @@ def load_config(path):
                          ("schedule", "hours"), ("schedule", "minute")):
         if (cfg.get(section) or {}).get(key) in (None, "", []):
             fail(f"{path}: missing {section}.{key}")
+    model = (cfg.get("run") or {}).get("review_model")
+    if model is not None and model not in REVIEW_MODELS:
+        fail(f"{path}: run.review_model must be one of {', '.join(REVIEW_MODELS)},"
+             f" got {model!r}")
     gh_cfg = cfg["github"]
     labels = gh_cfg.get("repo_labels") or {}
     if not isinstance(labels, dict):
@@ -1095,6 +1103,39 @@ def cmd_lock(args):
     show(out)
 
 
+# --- review-call ------------------------------------------------------------
+# The routine runs on a cheaper model; each review runs in a subagent on
+# run.review_model. This prints that subagent's call so the agent passes it
+# as is. Without the Agent tool the review runs inline, on the session's model,
+# and its result line says so.
+
+INLINE_NOTE = "(review sin subagente: modelo de la sesión)"
+
+
+def review_call(cfg, url, directory):
+    model = (cfg.get("run") or {}).get("review_model")
+    prompt = (f"Work from `{directory}`. Invoke the `review-changes` skill with "
+              f"exactly these arguments: `--auto {url}`. When it ends, reply with "
+              "its final `review-result` block, verbatim, and nothing else.")
+    call = {"description": f"review-changes --auto {label_of_url(url)}",
+            "prompt": prompt}
+    if model:
+        call["model"] = model
+    return {"agent": call, "inline_note": INLINE_NOTE}
+
+
+def label_of_url(url):
+    match = PR_URL.search(url)
+    return f"{label(match.group(2))}#{match.group(3)}" if match else url
+
+
+def cmd_review_call(args):
+    cfg = load_config(args.config)
+    if not PR_URL.search(args.url):
+        fail(f"--url must be a GitHub pull request URL, got {args.url!r}")
+    show(review_call(cfg, args.url, args.dir))
+
+
 # --- ping -------------------------------------------------------------------
 # One extra message from another sender (a Slack workflow webhook), so Slack
 # notifies me. The URL lives in an environment variable and is never printed.
@@ -1172,6 +1213,12 @@ def main(argv=None):
     p.add_argument("--mine", help="ts of my own 🔒 line")
     p.add_argument("--now")
     p.set_defaults(run=cmd_lock)
+
+    p = sub.add_parser("review-call")
+    p.add_argument("--config", required=True)
+    p.add_argument("--url", required=True, help="the PR's GitHub URL")
+    p.add_argument("--dir", required=True, help="the PR's clone, head checked out")
+    p.set_defaults(run=cmd_review_call)
 
     p = sub.add_parser("ping")
     p.add_argument("--config", required=True)
