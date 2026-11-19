@@ -137,6 +137,7 @@ def run(argv, routes, threads=("graphql", [])):
 
     originals = mod.gh, mod.review_threads
     mod.gh = fake_gh
+    mod._search_times[:] = []  # each run starts with a fresh search budget
     mod.review_threads = lambda full, number: threads
     buffer = io.StringIO()
     code = 0
