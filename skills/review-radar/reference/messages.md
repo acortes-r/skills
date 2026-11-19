@@ -48,6 +48,7 @@ Severity counts come from `review-result.comments`: the non-zero ones as
 | over `max_reviews_per_run` | `⏳ <link> · <author> · queda para la siguiente corrida` |
 | `radar.py lock` says `skip` | `⏭️ <link> · <author> · omitido: <lock reason>` |
 | gate `skip` | `⏭️ <link> · <author> · omitido: <gate reason>` |
+| gate `skip`, `repo no configurado` | same; `<author>` is the candidate's, the gate cannot read it |
 | gate `error` | `⚠️ <link> · error: <gate reason>` |
 
 ## 📬 Tus PRs
@@ -101,7 +102,14 @@ it would have had in `📬`.
 💤 <…/pull/1488|integrations#1488> · sin movimiento (4 d)
 ```
 
-No open PRs: `📋 Tus PRs abiertos (0)` alone.
+After the digest lines, the `line` of each `my-prs` `skipped` entry: a PR of
+mine in a repo of the org outside `github.repos`, which `my-prs` cannot read.
+
+```
+⏭️ <…/pull/41|nueva#41> · omitido: repo no configurado
+```
+
+No open PRs: `📋 Tus PRs abiertos (0)` alone, plus any `skipped` lines.
 
 ## 🔔 Ping
 

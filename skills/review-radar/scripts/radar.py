@@ -304,7 +304,12 @@ def search_throttle():
 
 
 def search_issues(query):
-    """Every issue/PR the search API returns for `query`, paged by hand."""
+    """Every issue/PR the search API returns for `query`, paged by hand.
+
+    Every query is scoped to one org: a search without `org:` never runs.
+    """
+    if not re.search(r"(^|\s)org:\S", query):
+        raise RuntimeError(f"search without org: refused: {query!r}")
     items = []
     for page in range(1, SEARCH_MAX_PAGES + 1):
         args = ["api", "-X", "GET", "search/issues", "-f", f"q={query}",
@@ -329,6 +334,33 @@ def search_ref(item):
     """owner/repo#n of a search result."""
     full = (item.get("repository_url") or "").split("/repos/", 1)[-1]
     return f"{full}#{item.get('number')}"
+
+
+UNCONFIGURED = "repo no configurado"
+
+
+def sort_hits(hits, cfg):
+    """Split search results into (configured, unconfigured), each a list of
+    (owner, repo, number, item). A result from another org is dropped; one
+    from a repo of the org outside github.repos is listed, never read."""
+    org, repos = cfg["github"]["org"], cfg["github"]["repos"]
+    configured, unconfigured = [], []
+    for item in hits:
+        match = PR_REF.match(search_ref(item))
+        if not match or match.group(1) != org:
+            continue
+        owner, repo, number = match.group(1), match.group(2), int(match.group(3))
+        (configured if repo in repos else unconfigured).append(
+            (owner, repo, number, item))
+    return configured, unconfigured
+
+
+def hit_summary(owner, repo, number, item):
+    """What a search result says about a PR, without reading its repo."""
+    return {"pr": f"{owner}/{repo}#{number}", "repo": repo, "label": label(repo),
+            "number": number, "link": slack_link(owner, repo, number),
+            "title": item.get("title") or "", "author": login(item.get("user")),
+            "url": item.get("html_url")}
 
 
 def review_threads(full, number):
@@ -497,7 +529,7 @@ def collect_github(args, cfg, out):
     if args.pr:
         owner, repo, number = parse_ref(args.pr)
         if owner != org or repo not in cfg["github"]["repos"]:
-            out["not_candidate"] = {"pr": args.pr, "reason": "repo no configurado"}
+            out["not_candidate"] = {"pr": args.pr, "reason": UNCONFIGURED}
             return
         try:
             pr = api(f"repos/{owner}/{repo}/pulls/{number}")
@@ -521,10 +553,13 @@ def collect_github(args, cfg, out):
         for item in hits:
             if login(item.get("user")) != me:  # my own PRs belong to my-prs
                 found.setdefault(search_ref(item), item)
-    for ref in found:
-        owner, repo, number = parse_ref(ref)
-        if owner != org or repo not in cfg["github"]["repos"]:
-            continue
+    configured, unconfigured = sort_hits(found.values(), cfg)
+    for owner, repo, number, item in unconfigured:
+        # Its API answers 403 in a routine: the gate skips it unread.
+        out["candidates"].append({**hit_summary(owner, repo, number, item),
+                                  "why": UNCONFIGURED})
+    for owner, repo, number, _ in configured:
+        ref = f"{owner}/{repo}#{number}"
         try:
             pr = api(f"repos/{owner}/{repo}/pulls/{number}")
             reason = why_candidate(pr, cfg, owner, repo)
@@ -536,14 +571,15 @@ def collect_github(args, cfg, out):
 
 
 def search_queries(cfg):
-    """One search per way a PR can be mine to review, over the configured repos.
+    """One search per way a PR can be mine to review, over github.org only.
 
-    The search narrows the list; why_candidate still decides, so a request to a
-    team outside request_teams, or a thread reply counted as a review, drops out.
+    The search narrows the list; sort_hits keeps the configured repos, and
+    why_candidate still decides, so a request to a team outside request_teams,
+    or a thread reply counted as a review, drops out.
     """
     gh_cfg = cfg["github"]
     org, me = gh_cfg["org"], gh_cfg["me"]
-    base = "is:pr is:open " + " ".join(f"repo:{org}/{r}" for r in gh_cfg["repos"])
+    base = f"is:pr is:open org:{org}"
     return ([f"{base} review-requested:{me}"]
             + [f"{base} team-review-requested:{org}/{team}"
                for team in gh_cfg.get("request_teams") or []]
@@ -559,7 +595,9 @@ def decide(cfg, ref, source):
     me = gh_cfg["me"]
     owner, repo, number = parse_ref(ref)
     if owner != gh_cfg["org"] or repo not in gh_cfg["repos"]:
-        return "skip", "repo no configurado", {}
+        return "skip", UNCONFIGURED, {"repo": repo, "label": label(repo),
+                                      "number": number,
+                                      "link": slack_link(owner, repo, number)}
     pr = api(f"repos/{owner}/{repo}/pulls/{number}")
     summary = pr_summary(pr, owner, repo)
     if pr.get("merged") or pr.get("merged_at"):
@@ -951,21 +989,24 @@ def cmd_my_prs(args):
     since = parse_time(args.since, tz)
     now = parse_time(args.now, tz) if args.now else dt.datetime.now(dt.timezone.utc)
     org, me = cfg["github"]["org"], cfg["github"]["me"]
-    out = {"since": since.isoformat(), "prs": [], "errors": []}
-    for repo in cfg["github"]["repos"]:
+    out = {"since": since.isoformat(), "prs": [], "skipped": [], "errors": []}
+    query = f"is:pr is:open org:{org} author:{me}"
+    try:
+        hits = [h for h in search_issues(query) if login(h.get("user")) == me]
+    except RuntimeError as err:
+        out["errors"].append({"search": query, "error": str(err)})
+        hits = []
+    configured, unconfigured = sort_hits(hits, cfg)
+    for owner, repo, number, item in unconfigured:
+        entry = hit_summary(owner, repo, number, item)
+        out["skipped"].append({**entry, "reason": UNCONFIGURED,
+                               "line": f"⏭️ {entry['link']} · omitido: {UNCONFIGURED}"})
+    for owner, repo, number, item in configured:
         try:
-            pulls = api_pages(f"repos/{org}/{repo}/pulls?state=open")
+            out["prs"].append(one_pr(cfg, owner, repo, item, since, now))
         except RuntimeError as err:
-            out["errors"].append({"repo": f"{org}/{repo}", "error": str(err)})
-            continue
-        for listed in pulls:
-            if login(listed.get("user")) != me:
-                continue
-            try:
-                out["prs"].append(one_pr(cfg, org, repo, listed, since, now))
-            except RuntimeError as err:
-                out["errors"].append({"pr": f"{org}/{repo}#{listed['number']}",
-                                      "error": str(err)})
+            out["errors"].append({"pr": f"{owner}/{repo}#{number}",
+                                  "error": str(err)})
     out["digest"] = digest(out["prs"])
     show(out)
 

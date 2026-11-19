@@ -31,6 +31,10 @@ R="python3 <skill dir>/scripts/radar.py"; C="--config <skill dir>/config.yml"
 
 - GitHub is read over REST only: `radar.py`, `gh api …`, and
   `post_review.py pr|diff|threads`. Cloud sessions answer GraphQL with 403.
+- GitHub is searched only inside `github.org`, and only by `radar.py`: every
+  query carries `org:<github.org>`. A repo of the org outside `github.repos`
+  is never read or cloned (a routine gets 403 there); its PRs are reported as
+  `⏭️ … omitido: repo no configurado`.
 - GitHub receives writes only from `review-changes`. Everything about my own
   pull requests is read-only.
 - Slack receives writes only in `slack.notify_channel`: the start message and
@@ -85,7 +89,9 @@ The **digest is due** when `first_run_of_day` and `my_prs.daily_digest` hold.
    `${TMPDIR:-/tmp}/review-radar-slack.json`.
 2. **Candidates.** `$R candidates $C --slack ${TMPDIR:-/tmp}/review-radar-slack.json`.
    It merges GitHub and Slack into one entry per PR, with `sources`,
-   `requested_by`, and `gate_source`.
+   `requested_by`, and `gate_source`. A PR from a repo of the org outside
+   `github.repos` comes with `why: repo no configurado` and its search
+   `author`; the gate skips it without reading it.
 3. **Gate.** For every candidate: `$R gate $C --pr <pr> --source <gate_source>`.
    Exit code 1 with `decision: error` is that PR's `⚠️` line.
 4. **My PRs.** When `my_prs.enabled`: `$R my-prs $C --since <since>`.
@@ -148,7 +154,8 @@ The PRs whose gate said `review`, in candidate order.
 One more reply in the thread, only when it has content:
 
 - digest due: `📋 Tus PRs abiertos`, every open PR once, `🆕` on the ones
-  that moved; no `📬` section;
+  that moved, then the `line` of each `my-prs` `skipped` entry; no `📬`
+  section;
 - otherwise: `📬 Tus PRs`, one line per PR with `has_events: true`.
 
 Errors that `candidates` or `my-prs` returned in `errors` go at the end of the
