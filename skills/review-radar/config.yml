@@ -1,7 +1,22 @@
 github:
   org: reservamos
   me: acortes-r
-  repos: [platform-purchase, saas-integrations, platform-funnel]
+  repos:                         # solo repos de github.org
+    [platform-purchase, platform-funnel, saas-integrations, saas-admin,
+     search-widget, reserhub, siempreplus-widget, reservamos-transporters,
+     reservamos-frontline, frontline, frontline-platform, saas-automated-tests,
+     auth-whitelabel, reservamos-cybersource, reservamos-kushki,
+     reservamos-mercadopago, whitelabel-accounts, js-api-client, platform-sre]
+  # Nombre corto en el DM. Sin entrada: lo que va después del último guion.
+  # Dos repos con el mismo nombre corto hacen fallar la carga del config.
+  repo_labels:
+    search-widget: search-widget
+    siempreplus-widget: siempreplus
+    reservamos-frontline: rv-frontline
+    frontline: frontline
+    frontline-platform: frontline-platform
+    saas-automated-tests: automated-tests
+    js-api-client: js-client
   request_teams: [core]          # review pedido a este team = pedido a mí
   my_team_authors:               # Merchant Services
     [a10003202, acortes-r, carlitos, alejandrocen-r, JazminDominguez, rowend]
