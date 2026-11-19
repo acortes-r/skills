@@ -33,13 +33,13 @@ notify:
 schedule:
   tz: America/Merida
   days: [1, 2, 3, 4, 5]          # lunes a viernes
-  hours: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18]
+  hours: [9, 11, 13, 15, 17]     # cron: 7 9-17/2 * * 1-5
   minute: 7
 run:
   mode: live                     # dry | live
-  max_reviews_per_run: 3          # corridas cortas, menos encimadas
+  max_reviews_per_run: 5         # caben en las 2 h entre corridas
   review_model: opus             # modelo del subagente de cada review
-  lock_minutes: 90               # un 🔒 sin resultado vence después de esto
+  lock_minutes: 90               # un 🔒 sin resultado vence después de esto (< 2 h)
 my_prs:
   enabled: true
   stale_days: 3

@@ -294,6 +294,28 @@ def test_since_late_trigger_keeps_its_slot():
           data["since"] == "2026-03-10T09:07:00-06:00", data)
 
 
+def since_every_two_hours(now):
+    path = TMP / "config-2h.yml"
+    path.write_text(CONFIG.replace("hours: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18]",
+                                   "hours: [9, 11, 13, 15, 17]"))
+    data, _, _ = run(["since", "--config", str(path), "--now", now], {})
+    return data
+
+
+def test_since_every_two_hours():
+    data = since_every_two_hours("2026-03-10T11:07:10-06:00")  # Tuesday
+    check("every 2 h: the 11:07 run covers from 9:07",
+          data["since"] == "2026-03-10T09:07:00-06:00"
+          and data["first_run_of_day"] is False and data["scheduled"] is True, data)
+
+
+def test_since_every_two_hours_monday():
+    data = since_every_two_hours("2026-03-16T09:07:10-06:00")  # Monday
+    check("every 2 h: Monday 9:07 covers from Friday 17:07 and is the digest run",
+          data["since"] == "2026-03-13T17:07:00-06:00"
+          and data["first_run_of_day"] is True, data)
+
+
 def test_since_accepts_utc():
     data = since_at("2026-03-10T16:07:10Z")  # 10:07 in Merida
     check("--now in UTC is converted to the schedule's zone",
