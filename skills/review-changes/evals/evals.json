@@ -785,6 +785,18 @@
         "Sends APPROVE under --auto because only a 🔵 survives at full coverage.",
         "The review-result block reports action approved."
       ]
+    },
+    {
+      "id": 72,
+      "prompt": "/review-changes --auto https://github.com/acme/app/pull/1140. Every routed profile runs at full coverage and this review finds nothing of its own. The PR has 6 review threads that are open and not outdated, none of them ours: 2 by copilot-pull-request-reviewer[bot], 2 by coderabbitai[bot], 2 by revisor-ficticio. revisor-ficticio also left a review with one 🟠 finding. GraphQL works, so thread resolution is known.",
+      "expected_output": "No approval. post_review.py blockers lists the 6 open threads; the round goes out as a summary-only COMMENT, `Ronda 1 (<sha>). Sin comentarios nuevos.`, with the threads under Pendientes grouped by author with their links, and the review-result action is summary-only.",
+      "expectations": [
+        "Runs post_review.py blockers before choosing the publisher run, and line 2 of the resumen says the PR cannot be approved because of the open threads.",
+        "Never sends --approve without being refused: the publisher run carries no --approve, or the dry run refuses it with --approve refuses and the run falls back.",
+        "The round body lists the 6 threads under Pendientes, one line per author (revisor-ficticio, copilot-pull-request-reviewer[bot], coderabbitai[bot]) with each thread's link.",
+        "The review-result block has action summary-only and comments all 0.",
+        "No review is sent with an empty body."
+      ]
     }
   ]
 }

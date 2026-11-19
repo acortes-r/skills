@@ -5,8 +5,8 @@ license: MIT
 compatibility: Requires git. Pull-request features require an authenticated GitHub CLI (gh 2.40+). Host must provide file-read, grep, and shell tools.
 allowed-tools: Read, Grep, Glob, Bash, Agent
 metadata:
-  version: 0.9.4
-  review_event: COMMENT, or APPROVE when no 🔴 or 🟠 survives at full coverage
+  version: 0.10.0
+  review_event: COMMENT, or APPROVE when no 🔴 or 🟠 survives at full coverage and nothing on the PR withholds it (open threads, a standing change request, unknown thread resolution)
   never_emits: REQUEST_CHANGES
   approves_only: after an explicit user go, or the skill's own verdict under --auto
   posted_language: es
@@ -63,6 +63,12 @@ the review outcome.
   things is true: the diff changes no behavior, or the review ran with full
   coverage and every surviving finding is a 🔵, with no open thread still
   pending. Reduced coverage means the approval is not offered at all.
+- No approval while the PR itself says otherwise, whatever this review found:
+  a review thread that is open and not outdated, opened by anyone (people or
+  bots); a person (not a bot) whose latest verdict is `CHANGES_REQUESTED`; or
+  thread resolution that cannot be read (`resolution: unknown`). The round
+  goes out summary-only with those under `pendientes`. The publisher reads
+  this itself and refuses `--approve`; `post_review.py blockers` prints it.
 - Never call `gh pr review --approve`, `--request-changes`, `gh pr merge`, or
   `gh pr close`. The one approval path is the publisher in step 7.
 - Read-only. Never edit, create, or delete repository files. The writes are the
@@ -90,12 +96,13 @@ Review progress:
 - [ ] 4. Candidates verified
 - [ ] 5a. Our earlier threads classified
 - [ ] 5b. Deduped against other reviewers
+- [ ] 5c. Approval blockers read
 - [ ] 6. Deployment risk assessed
 - [ ] 7. Round published, approved, or nothing to send
 - [ ] 8. Local report and ledger returned
 ```
 
-In local mode, 5a and 5b are `skipped:local`, and 7 and 8 become one item:
+In local mode, 5a, 5b and 5c are `skipped:local`, and 7 and 8 become one item:
 `Report file written and its path printed`.
 
 ## Step 0 — Load the project contract
@@ -257,7 +264,15 @@ resolve.
 **5b — other reviewers.** Read `reference/existing-comments.md` and follow it,
 on what 5a did not already dispose of.
 
-Skip both only when there is no PR context, recorded as
+**5c — what withholds an approval.** Run
+`python3 scripts/post_review.py blockers --repo <owner>/<name> --pr <n>`. It
+lists the review threads still open and not outdated, by anyone (people or
+bots), the people whose latest verdict is `CHANGES_REQUESTED`, and whether
+thread resolution is known. When any of those holds, the approval is not
+offered, even if this review found nothing: its `pendientes` lines, grouped by
+author with their links, go into the round's `pendientes`.
+
+Skip all three only when there is no PR context, recorded as
 `not-run:no-pr-context`, or in local mode, recorded as `skipped:local`.
 
 ## Step 6 — Assess deployment risk
@@ -309,6 +324,7 @@ are distinguishable without reading the sentence:
 | diff changes behavior, a 🔴 or 🟠 survives | 🚫 `Se puede aprobar: no — hay <highest severity present>` |
 | diff changes behavior, only 🔵 survive | ✅ `Se puede aprobar: sí — solo sugerencias, ninguna bloquea` |
 | findings dropped onto open threads | 🚫 `Se puede aprobar: no — <D> hallazgos ya están abiertos en hilos de <source (n)>, <source (n)>` |
+| `blockers` lists something (open threads, change request, unknown resolution) | 🚫 `Se puede aprobar: no — <n> hilos abiertos de <author (n)>, <author (n)> \| <login> pidió cambios \| no sé si los hilos están resueltos` (whichever apply, joined by `; `) |
 | diff changes behavior, no findings, full coverage | ✅ `Se puede aprobar: sí` |
 | diff changes behavior, no findings, reduced coverage | ⚠️ `Se puede aprobar: sí, pero lo apruebas tú — cobertura reducida: <reason>` |
 | diff changes no behavior | ✅ `Se puede aprobar: sí` |
@@ -353,6 +369,7 @@ round this run would publish:
 | behavior diff, no findings, full coverage | ❓ `¿Apruebo el PR? No encontré hallazgos en <N> archivos.` |
 | behavior diff, no findings, reduced coverage | ❓ `¿Publico el resumen de la Ronda <R>? Revisión parcial: <reason>.` |
 | findings dropped onto open threads | ❓ `¿Publico el resumen de la Ronda <R>? Quedan <D> pendientes.` |
+| no findings, but `blockers` lists something | ❓ `¿Publico el resumen de la Ronda <R>? Quedan <D> pendientes.` |
 | a round already went out at this head, nothing new | 📭 `Ronda <R-1> ya publicada en <short sha>. Nada que enviar.` |
 | already approved at this head commit | 📭 `Ya aprobado en <short sha>. Nada que enviar.` |
 | no PR context | 📭 `Sin contexto de PR: no puedo publicar ni aprobar.` |
@@ -476,8 +493,9 @@ What to pass, by case:
 | a 🔴 or 🟠 survives | `--findings` plus whatever of `--replies`, `--summary`, `--resolve` applies. `event: COMMENT` |
 | only 🔵 survive | `--approve --findings`. The publisher refuses to approve alongside a 🔴, a 🟠, a finding with no severity marker, or a pending thread |
 | docs-only diff | follow the approve flow in `reference/docs-only.md`: `--approve --notes`, with `--notes` omitted when there are none. State plainly that sending it approves the pull request |
-| no findings, full coverage | `--approve` alone. With nothing new and nothing resolved the approval goes in bare |
+| no findings, full coverage | `--approve` alone. With nothing new and nothing resolved the approval goes in bare, except under `--auto` (below) |
 | findings dropped onto open threads | `--summary` with those threads under `pendientes`. A summary-only round, no approval |
+| `blockers` lists something, whatever the findings | no `--approve`. `--findings` when a 🔵 survives, and `--summary` with `blockers`' `pendientes` lines merged into `pendientes`. With no findings: a summary-only round |
 | no findings, reduced coverage | `--summary` with `parcial` set. A summary-only round, no approval |
 
 `--notes` and `--findings` are different runs and cannot be combined. An answer
@@ -496,6 +514,10 @@ the table above picks for the case, `--replies` and `--resolve` included; the go
 `reference/docs-only.md` and `reference/prior-reviews.md` ask for is likewise
 the verdict.
 
+Every `--approve` run under `--auto` also passes the publisher's own `--auto`:
+the approval then always carries its round line, at least
+`Ronda <R> (<short sha>). Sin comentarios nuevos.`, never an empty body.
+
 1. Run the publisher with `--dry-run` and print what it prints, as in step 2.
 2. Dry run exits 0: run the same command without `--dry-run`.
 3. Dry run refuses the approval (its error says `--approve refuses` or
@@ -503,7 +525,10 @@ the verdict.
    `COMMENT` — dry run first, then the send. A docs-only run drops `--notes`
    too, since notes travel only with an approval, and sends `--summary` with
    whatever `--replies` and `--resolve` apply; the notes stay in the local
-   report. Never try another flag combination to get the approval through.
+   report. When the refusal prints a `{"pendientes": [...]}` object (open
+   threads, a change request, unknown resolution), add those lines to
+   `pendientes` in `--summary`: with no findings the round is `summary-only`.
+   Never try another flag combination to get the approval through.
 4. Any other failure, in the dry run or the send: stop. Nothing further is
    sent and the action is `error`. A send that exits 1 after printing
    `published as` did publish: report what it published, and name the failed
@@ -536,7 +561,7 @@ report and after everything else, so another agent can read it:
 |---|---|
 | `approved` | an `APPROVE` review was sent |
 | `commented` | a `COMMENT` round with at least one new comment, the fallback of a refused approval, or only replies and resolutions with no review |
-| `summary-only` | a `COMMENT` round with no new comment: reduced coverage, findings on open threads, or a refused docs-only approval |
+| `summary-only` | a `COMMENT` round with no new comment: reduced coverage, findings on open threads, a refused docs-only approval, or an approval withheld by `blockers` (open threads, a change request, unknown resolution) |
 | `nothing-sent` | the publisher found a round or approval already at this head with nothing new, or the diff was empty |
 | `error` | missing context, or the publisher failed before sending |
 
